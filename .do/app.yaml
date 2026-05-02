@@ -1,0 +1,34 @@
+name: tourplannerbot
+region: lon  # change to your preferred region (nyc, sfo, fra, sgp, etc.)
+
+workers:
+  - name: worker
+    image:
+      registry_type: DOCR
+      registry: maulabs  # replace with your DO registry name
+      repository: tourplannerbot
+      tag: latest
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    envs:
+      - key: TELEGRAM_BOT_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+      - key: ACCESS_PIN
+        scope: RUN_TIME
+        type: SECRET
+      - key: OPENAI_MODEL
+        scope: RUN_TIME
+        value: gpt-4o-mini
+      - key: OPENAI_BASE_URL
+        scope: RUN_TIME
+        value: https://api.openai.com/v1
+      - key: LOG_LEVEL
+        scope: RUN_TIME
+        value: info

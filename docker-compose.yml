@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./prompts:/app/prompts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+include:
+  - docker-compose.db.yml
