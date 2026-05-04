@@ -7,8 +7,9 @@ on:
 
 env:
   REGISTRY: registry.digitalocean.com
-  REGISTRY_NAME: ${{ secrets.DO_REGISTRY_NAME }}
+  REGISTRY_NAME: maulabs
   IMAGE_NAME: tourplannerbot
+  DO_APP_ID: ${{ vars.DO_APP_ID }}
 
 jobs:
   build-and-push:
@@ -34,4 +35,4 @@ jobs:
           docker push $IMAGE_LATEST
 
       - name: Deploy to DO App Platform
-        run: doctl apps update ${{ secrets.DO_APP_ID }} --spec .do/app.yaml
+        run: doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.yaml
