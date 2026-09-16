@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"tourplannerbot/internal/config"
+	"tourplannerbot/internal/database"
 	"tourplannerbot/internal/telegram"
 
 	"github.com/go-telegram/bot"
@@ -31,7 +32,23 @@ func main() {
 
 	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
 
-	messageHandler := telegram.NewHandler(logger)
+	applicationContext, cancelApplicationContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancelApplicationContext()
+
+	databaseConnection, err := database.Open(applicationContext, applicationConfig.DatabaseURL)
+	if err != nil {
+		logger.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+
+	sqlDatabaseConnection, err := databaseConnection.DB()
+	if err != nil {
+		logger.Error("failed to access database connection pool", "error", err)
+		os.Exit(1)
+	}
+	defer sqlDatabaseConnection.Close()
+
+	messageHandler := telegram.NewHandler(logger, databaseConnection, applicationConfig.AccessPIN)
 
 	telegramBot, err := bot.New(applicationConfig.TelegramBotToken,
 		bot.WithDefaultHandler(messageHandler.HandleMessage),
@@ -41,10 +58,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancelContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancelContext()
-
-	botInfo, err := telegramBot.GetMe(ctx)
+	botInfo, err := telegramBot.GetMe(applicationContext)
 	if err != nil {
 		logger.Error("failed to get bot info from telegram", "error", err)
 		os.Exit(1)
@@ -58,6 +72,6 @@ func main() {
 	)
 
 	logger.Info("bot is running, press Ctrl+C to stop")
-	telegramBot.Start(ctx)
+	telegramBot.Start(applicationContext)
 	logger.Info("bot stopped gracefully")
 }

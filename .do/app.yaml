@@ -15,12 +15,17 @@ workers:
         scope: RUN_TIME
         type: SECRET
         value: "${TELEGRAM_BOT_TOKEN}"
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        type: SECRET
+        value: "${DATABASE_URL}"
       - key: OPENAI_API_KEY
         scope: RUN_TIME
         type: SECRET
         value: "${OPENAI_API_KEY}"
       - key: ACCESS_PIN
         scope: RUN_TIME
+        type: SECRET
         value: "${ACCESS_PIN}"
       - key: OPENAI_MODEL
         scope: RUN_TIME

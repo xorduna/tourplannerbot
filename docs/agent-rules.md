@@ -1,4 +1,17 @@
-General guidelines:
+---
+title: Agent Rules
+description: Coding, documentation, memory, and workflow conventions for contributors and agents.
+methods: []
+depends_on: []
+used_by:
+  - docs/plan.md
+  - README.md
+---
+
+# Agent Rules
+
+## General Guidelines
+
 - Create always long variable names, even if they are not used more than once. This makes it easier to understand the code and its purpose.
 - Avoid using abbreviations or acronyms in variable names, unless they are widely known and accepted in the context of the code.
 - Use descriptive names for functions and methods, that clearly indicate their purpose and functionality.
@@ -7,7 +20,7 @@ General guidelines:
 - User may speak in any language, but the code and documentation should always be in English.
 
 
-Documentation:
+## Documentation
 - Update documentation in /docs folder
 - Add the following metadata on top of each documentation file:
   - title: A clear and concise title that reflects the content of the documentation.
@@ -17,10 +30,10 @@ Documentation:
   - used_by: List of files or modules that use this file.
 - make sure that there is a bash script in the scripts folder that can be used to create a `code-index.md` file that contains all the metadata from the documentation files in the /docs folder, and that this script is run regularly to keep the code index up to date.
 
-Memory:
+## Memory
 - Use memory to store important information that may be needed later in the conversation, such as user preferences, previous interactions, or relevant context.
 - Regularly review and update the memory to ensure it remains accurate and relevant.
 - Use memory to provide personalized responses and recommendations based on the user's previous interactions and preferences.
 
-Workflow:
+## Workflow
 - After each iteration, check `readme.md` and make sure is updated with the latest information about the project, specially folder structure and how to run the project.

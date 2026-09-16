@@ -1,4 +1,15 @@
-# Travel Bot — Project Prompt
+---
+title: Travel Bot Project Plan
+description: Product scope, architecture, configuration, deployment notes, and delivery status for the travel-planning bot.
+methods: []
+depends_on:
+  - README.md
+  - .env.example
+used_by:
+  - README.md
+---
+
+# Travel Bot — Project Plan
 
 ## Overview
 
@@ -40,8 +51,9 @@ Users stay authorized even if PIN changes. Only new users need the current PIN.
 cmd/bot/main.go
 internal/
   telegram/
-    handler.go           # Message routing (auth, group vs private)
-    auth.go              # PIN verification, user whitelist
+    handler.go           # Message routing, PIN verification, group vs private
+  models/
+    allowed_user.go      # GORM model for the PIN user whitelist
   llm/
     client.go            # OpenAI-compatible client
     types.go             # Message, Tool, ToolCall, Response
@@ -270,16 +282,16 @@ DigitalOcean App Platform. The app is created manually in the DO console:
 Each slice delivers working functionality top to bottom.
 Each one is a single task for Claude Code / Copilot.
 
-### Slice 1 — Echo Bot + Infra + Deploy
+### Slice 1 — Echo Bot + Infra + Deploy ✅ Complete
 - Go project scaffold (`go mod init`, directory structure)
 - Config loading from env vars
 - Telegram bot with long polling that echoes messages back
 - Dockerfile + docker-compose.yml (bot + postgres for local dev)
 - Graceful shutdown on SIGTERM
 - Push to GitHub, deploy to DigitalOcean App Platform
-- **Done when**: Bot runs on DO, you message it on Telegram, it echoes back
+- **Completed**: The bot runs on DigitalOcean App Platform and echoes Telegram messages.
 
-### Slice 2 — Auth (PIN)
+### Slice 2 — Auth (PIN) 🚧 In Progress
 - Postgres connection + migration (create `allowed_users` table)
 - PIN verification flow: unknown user → ask PIN → validate → add to whitelist
 - Bot ignores messages from non-authorized users (except PIN input)

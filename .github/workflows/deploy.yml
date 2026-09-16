@@ -10,6 +10,7 @@ env:
   REGISTRY_NAME: maulabs
   IMAGE_NAME: tourplannerbot
   DO_APP_ID: ${{ vars.DO_APP_ID }}
+  DO_DATABASE_ID: ${{ vars.DO_DATABASE_ID || 'db-postgresql-lon1-84522' }}
 
 jobs:
   build-and-push:
@@ -32,11 +33,82 @@ jobs:
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
 
-  deploy:
+  migrate:
     runs-on: ubuntu-latest
     needs: build-and-push
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Install Goose
+        run: go install github.com/pressly/goose/v3/cmd/goose@v3.25.0
+
+      - name: Run PostgreSQL migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          runner_ip="$(curl --fail --retry 3 --silent --show-error https://api.ipify.org)"
+          existing_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${runner_ip}" '.[] | select(.type == "ip_addr" and .value == $runner_ip) | .uuid' | head -n 1)"
+          runner_firewall_rule_added=false
+          runner_firewall_rule_uuid=""
+
+          cleanup_runner_firewall_rule() {
+            if [[ "${runner_firewall_rule_added}" != true ]]; then
+              return
+            fi
+
+            if [[ -z "${runner_firewall_rule_uuid}" ]]; then
+              runner_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${runner_ip}" '.[] | select(.type == "ip_addr" and .value == $runner_ip) | .uuid' | head -n 1)"
+            fi
+
+            if [[ -n "${runner_firewall_rule_uuid}" ]]; then
+              doctl databases firewalls remove "${DO_DATABASE_ID}" --uuid "${runner_firewall_rule_uuid}"
+            fi
+          }
+
+          trap cleanup_runner_firewall_rule EXIT
+
+          if [[ -z "${existing_firewall_rule_uuid}" ]]; then
+            doctl databases firewalls append "${DO_DATABASE_ID}" --rule "ip_addr:${runner_ip}"
+            runner_firewall_rule_added=true
+            runner_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${runner_ip}" '.[] | select(.type == "ip_addr" and .value == $runner_ip) | .uuid' | head -n 1)"
+            if [[ -z "${runner_firewall_rule_uuid}" ]]; then
+              echo "The runner IP firewall rule could not be identified for cleanup." >&2
+              exit 1
+            fi
+          fi
+
+          database_url="$(doctl databases connection "${DO_DATABASE_ID}" --format URI --no-header)"
+          export GOOSE_DRIVER=postgres
+          export GOOSE_DBSTRING="${database_url}"
+          export GOOSE_MIGRATION_DIR=migrations
+
+          for attempt in {1..6}; do
+            if "${HOME}/go/bin/goose" up; then
+              exit 0
+            fi
+            echo "Migration attempt ${attempt} failed; retrying in 5 seconds." >&2
+            sleep 5
+          done
+
+          exit 1
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: migrate
     env:
-      ACCESS_PIN: "2013"
+      ACCESS_PIN: ${{ secrets.ACCESS_PIN }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
     steps:
@@ -50,7 +122,13 @@ jobs:
 
       - name: Deploy to DO App Platform
         run: |
+          existing_app_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg application_id "${DO_APP_ID}" '.[] | select(.type == "app" and .value == $application_id) | .uuid' | head -n 1)"
+          if [ -z "${existing_app_firewall_rule_uuid}" ]; then
+            doctl databases firewalls append "${DO_DATABASE_ID}" --rule "app:${DO_APP_ID}"
+          fi
+
           export IMAGE_TAG=${{ github.sha }}
-          envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $OPENAI_API_KEY $ACCESS_PIN' \
+          export DATABASE_URL="$(doctl databases connection "${DO_DATABASE_ID}" --format URI --no-header)"
+          envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $DATABASE_URL $OPENAI_API_KEY $ACCESS_PIN' \
             < .do/app.yaml > .do/app.deploy.yaml
           doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.deploy.yaml

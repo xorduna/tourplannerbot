@@ -2,12 +2,14 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (current: Slice 1 — Echo Bot)
+## Features (Slice 2 — PIN authentication in progress)
 
 - Echoes messages back (foundation for all future slices)
 - Config loaded from environment variables
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
+
+Slice 1 (Echo Bot + infrastructure + deployment) is complete. Slice 2 adds PIN-based access control backed by PostgreSQL.
 
 ## Project Structure
 
@@ -15,7 +17,10 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 cmd/bot/main.go               # Entrypoint
 internal/
   config/config.go            # Env var loading
+  database/database.go        # GORM PostgreSQL connection
+  models/allowed_user.go      # GORM model for authorized Telegram users
   telegram/handler.go         # Message routing
+migrations/                   # Goose SQL migrations
 prompts/
   system_trip.md              # System prompt for group/trip chats
   system_query.md             # System prompt for private/query chats
@@ -43,11 +48,26 @@ docker-compose.yml            # Local dev: bot + postgres
    go run ./cmd/bot
    ```
 
+## Database Migrations
+
+Migrations are SQL files in `migrations/` and are applied with the standalone [Goose](https://github.com/pressly/goose) binary, never by the bot process.
+
+For local development, start PostgreSQL, install Goose once, then apply the migrations:
+
+```bash
+make db-up
+make goose-install
+make migrate-up
+```
+
+Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must point to the local database; `.env.example` contains the default Docker Compose URL.
+
 ## Environment Variables
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | yes | — | Bot token from @BotFather |
+| `DATABASE_URL` | yes | — | PostgreSQL connection URL |
 | `OPENAI_API_KEY` | yes | — | OpenAI (or compatible) API key |
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
 | `OPENAI_MODEL` | no | `gpt-4o-mini` | Model name |
@@ -61,3 +81,4 @@ docker-compose.yml            # Local dev: bot + postgres
 - Component type: **Worker** (polling, no inbound HTTP)
 - Set all required env vars as secrets in the DO console
 - Push to GitHub → auto-deploy triggers
+- The GitHub workflow runs migrations in a dedicated job before deploying the worker. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret.

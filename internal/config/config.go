@@ -9,6 +9,7 @@ import (
 // Config holds all configuration values loaded from environment variables.
 type Config struct {
 	TelegramBotToken      string
+	DatabaseURL           string
 	OpenAIAPIKey          string
 	OpenAIModel           string
 	OpenAIBaseURL         string
@@ -24,6 +25,11 @@ func LoadFromEnvironment() (*Config, error) {
 	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
 	if telegramBotToken == "" {
 		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN environment variable is required")
+	}
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
 	}
 
 	openAIAPIKey := os.Getenv("OPENAI_API_KEY")
@@ -71,6 +77,7 @@ func LoadFromEnvironment() (*Config, error) {
 
 	return &Config{
 		TelegramBotToken:      telegramBotToken,
+		DatabaseURL:           databaseURL,
 		OpenAIAPIKey:          openAIAPIKey,
 		OpenAIModel:           openAIModel,
 		OpenAIBaseURL:         openAIBaseURL,
