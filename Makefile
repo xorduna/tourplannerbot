@@ -1,7 +1,8 @@
 REGISTRY := registry.digitalocean.com/maulabs
 IMAGE := tourplannerbot
 GOOSE_VERSION := v3.25.0
-GOOSE_BINARY := $(shell go env GOPATH)/bin/goose
+GOOSE_INSTALL ?= $(HOME)/.goose
+GOOSE_BINARY := $(GOOSE_INSTALL)/bin/goose
 
 .PHONY: run build tidy db-up db-down docker-up docker-down goose-install migrate-up migrate-status registry-push deploy
 
@@ -30,7 +31,7 @@ docker-down:
 
 ## Database migrations use the standalone Goose binary.
 goose-install:
-	go install github.com/pressly/goose/v3/cmd/goose@$(GOOSE_VERSION)
+	curl -fsSL https://raw.githubusercontent.com/pressly/goose/$(GOOSE_VERSION)/install.sh | GOOSE_INSTALL="$(GOOSE_INSTALL)" sh -s -- $(GOOSE_VERSION)
 
 migrate-up:
 	set -a; . ./.env; set +a; GOOSE_DRIVER=postgres GOOSE_DBSTRING="$$DATABASE_URL" GOOSE_MIGRATION_DIR=migrations $(GOOSE_BINARY) up

@@ -36,10 +36,11 @@ Migrations live in `migrations/` as sequential Goose SQL files. Check their stat
 
 The `migrate` GitHub Actions job runs after the image build and before the worker deployment. It:
 
-1. Looks up the GitHub runner's public IP address.
-2. Temporarily adds that IP as a DigitalOcean Managed Database trusted source.
-3. Uses the `DATABASE_URL` GitHub Actions secret to run the Goose binary.
-4. Removes the temporary trusted-source rule even if migration fails.
+1. Opens the database firewall for the GitHub runner's public IP address.
+2. Installs the pinned Goose release binary without installing Go, then uses the `DATABASE_URL` GitHub Actions secret to run it.
+3. Removes the temporary firewall rule, including when the migration step fails.
+
+These are separate workflow steps on the same runner, so the migration error and firewall cleanup are visible independently in GitHub Actions.
 
 The `deploy` job additionally grants the App Platform application persistent database access and injects the `DATABASE_URL` GitHub Actions secret as a runtime secret.
 
