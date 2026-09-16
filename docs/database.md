@@ -38,12 +38,12 @@ The `migrate` GitHub Actions job runs after the image build and before the worke
 
 1. Looks up the GitHub runner's public IP address.
 2. Temporarily adds that IP as a DigitalOcean Managed Database trusted source.
-3. Fetches the database connection URL with `doctl`, then runs the Goose binary.
+3. Uses the `DATABASE_URL` GitHub Actions secret to run the Goose binary.
 4. Removes the temporary trusted-source rule even if migration fails.
 
-The `deploy` job additionally grants the App Platform application persistent database access and injects `DATABASE_URL` as a runtime secret.
+The `deploy` job additionally grants the App Platform application persistent database access and injects the `DATABASE_URL` GitHub Actions secret as a runtime secret.
 
 Before enabling this flow, configure these GitHub Actions values:
 
 - Repository variable: `DO_APP_ID`. `DO_DATABASE_ID` may be set as a repository variable to override the database ID configured in the workflow.
-- Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `ACCESS_PIN`.
+- Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `ACCESS_PIN`.
