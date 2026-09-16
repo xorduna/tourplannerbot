@@ -31,7 +31,7 @@ docker-down:
 
 ## Database migrations use the standalone Goose binary.
 goose-install:
-	curl -fsSL https://raw.githubusercontent.com/pressly/goose/$(GOOSE_VERSION)/install.sh | GOOSE_INSTALL="$(GOOSE_INSTALL)" sh -s -- $(GOOSE_VERSION)
+	GOOSE_VERSION="$(GOOSE_VERSION)" GOOSE_INSTALL="$(GOOSE_INSTALL)" bash scripts/install-goose.sh
 
 migrate-up:
 	set -a; . ./.env; set +a; GOOSE_DRIVER=postgres GOOSE_DBSTRING="$$DATABASE_URL" GOOSE_MIGRATION_DIR=migrations $(GOOSE_BINARY) up

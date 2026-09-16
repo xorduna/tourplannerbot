@@ -40,7 +40,7 @@ The `migrate` GitHub Actions job runs after the image build and before the worke
 2. Installs the pinned Goose release binary without installing Go, then uses the `DATABASE_URL` GitHub Actions secret to run it.
 3. Removes the temporary firewall rule, including when the migration step fails.
 
-These are separate workflow steps on the same runner, so the migration error and firewall cleanup are visible independently in GitHub Actions.
+These are separate workflow steps on the same runner, so the migration error and firewall cleanup are visible independently in GitHub Actions. The workflow delegates the shell logic to the versioned scripts in `scripts/`.
 
 The `deploy` job additionally grants the App Platform application persistent database access and injects the `DATABASE_URL` GitHub Actions secret as a runtime secret.
 

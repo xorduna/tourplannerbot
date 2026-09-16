@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: Build, push and Deploy
 
 on:
   push:
@@ -48,69 +48,21 @@ jobs:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
       - name: Install Goose
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/pressly/goose/v3.25.0/install.sh \
-            | GOOSE_INSTALL="${HOME}/.goose" sh -s -- v3.25.0
+        run: bash scripts/install-goose.sh
 
       - name: Allow migration runner in database firewall
         id: runner_firewall
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          runner_ip="$(curl --fail --retry 3 --silent --show-error https://api.ipify.org)"
-          existing_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${runner_ip}" '.. | objects | select(.type? == "ip_addr" and .value? == $runner_ip) | .uuid? // empty' | head -n 1)"
-          echo "runner_ip=${runner_ip}" >> "${GITHUB_OUTPUT}"
-          if [[ -z "${existing_firewall_rule_uuid}" ]]; then
-            doctl databases firewalls append "${DO_DATABASE_ID}" --rule "ip_addr:${runner_ip}"
-            echo "runner_firewall_rule_added=true" >> "${GITHUB_OUTPUT}"
-            runner_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${runner_ip}" '.. | objects | select(.type? == "ip_addr" and .value? == $runner_ip) | .uuid? // empty' | head -n 1)"
-            if [[ -z "${runner_firewall_rule_uuid}" ]]; then
-              echo "The runner IP firewall rule could not be identified for cleanup." >&2
-              exit 1
-            fi
-            echo "runner_firewall_rule_uuid=${runner_firewall_rule_uuid}" >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          echo "runner_firewall_rule_added=false" >> "${GITHUB_OUTPUT}"
+        run: bash scripts/allow-database-runner.sh
 
       - name: Run PostgreSQL migrations
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          export GOOSE_DRIVER=postgres
-          export GOOSE_DBSTRING="${DATABASE_URL}"
-          export GOOSE_MIGRATION_DIR=migrations
-
-          for attempt in {1..6}; do
-            if "${HOME}/.goose/bin/goose" up; then
-              exit 0
-            fi
-            echo "Migration attempt ${attempt} failed; retrying in 5 seconds." >&2
-            sleep 5
-          done
-
-          exit 1
+        run: bash scripts/run-goose-migrations.sh
 
       - name: Remove migration runner from database firewall
         if: always() && steps.runner_firewall.outputs.runner_firewall_rule_added == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          runner_firewall_rule_uuid="${{ steps.runner_firewall.outputs.runner_firewall_rule_uuid }}"
-          if [[ -z "${runner_firewall_rule_uuid}" ]]; then
-            runner_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg runner_ip "${{ steps.runner_firewall.outputs.runner_ip }}" '.. | objects | select(.type? == "ip_addr" and .value? == $runner_ip) | .uuid? // empty' | head -n 1)"
-          fi
-
-          if [[ -z "${runner_firewall_rule_uuid}" ]]; then
-            echo "The runner IP firewall rule could not be identified for cleanup." >&2
-            exit 1
-          fi
-
-          doctl databases firewalls remove "${DO_DATABASE_ID}" --uuid "${runner_firewall_rule_uuid}"
+        env:
+          RUNNER_FIREWALL_RULE_UUID: ${{ steps.runner_firewall.outputs.runner_firewall_rule_uuid }}
+          RUNNER_IP: ${{ steps.runner_firewall.outputs.runner_ip }}
+        run: bash scripts/remove-database-runner.sh
 
   deploy:
     runs-on: ubuntu-latest
@@ -129,14 +81,10 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      - name: Deploy to DO App Platform
-        run: |
-          existing_app_firewall_rule_uuid="$(doctl databases firewalls list "${DO_DATABASE_ID}" --output json | jq -r --arg application_id "${DO_APP_ID}" '.. | objects | select(.type? == "app" and .value? == $application_id) | .uuid? // empty' | head -n 1)"
-          if [ -z "${existing_app_firewall_rule_uuid}" ]; then
-            doctl databases firewalls append "${DO_DATABASE_ID}" --rule "app:${DO_APP_ID}"
-          fi
+      - name: Allow App Platform application in database firewall
+        run: bash scripts/allow-database-app.sh
 
-          export IMAGE_TAG=${{ github.sha }}
-          envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $DATABASE_URL $OPENAI_API_KEY $ACCESS_PIN' \
-            < .do/app.yaml > .do/app.deploy.yaml
-          doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.deploy.yaml
+      - name: Deploy to DO App Platform
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: bash scripts/deploy-app.sh
