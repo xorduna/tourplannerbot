@@ -14,7 +14,6 @@ type Config struct {
 	OpenAIBaseURL         string
 	LLMMaxTokens          int
 	ToolCallMaxIterations int
-	DatabaseURL           string
 	AccessPIN             string
 	LogLevel              string
 }
@@ -30,11 +29,6 @@ func LoadFromEnvironment() (*Config, error) {
 	openAIAPIKey := os.Getenv("OPENAI_API_KEY")
 	if openAIAPIKey == "" {
 		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
-	}
-
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
 	}
 
 	accessPIN := os.Getenv("ACCESS_PIN")
@@ -82,7 +76,6 @@ func LoadFromEnvironment() (*Config, error) {
 		OpenAIBaseURL:         openAIBaseURL,
 		LLMMaxTokens:          llmMaxTokens,
 		ToolCallMaxIterations: toolCallMaxIterations,
-		DatabaseURL:           databaseURL,
 		AccessPIN:             accessPIN,
 		LogLevel:              logLevel,
 	}, nil

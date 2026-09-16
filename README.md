@@ -49,7 +49,6 @@ docker-compose.yml            # Local dev: bot + postgres
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | yes | — | Bot token from @BotFather |
 | `OPENAI_API_KEY` | yes | — | OpenAI (or compatible) API key |
-| `DATABASE_URL` | yes | — | PostgreSQL connection string |
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
 | `OPENAI_MODEL` | no | `gpt-4o-mini` | Model name |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Base URL (swap for OpenRouter etc.) |

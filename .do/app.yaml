@@ -7,22 +7,21 @@ workers:
       registry_type: DOCR
       registry: maulabs  # replace with your DO registry name
       repository: tourplannerbot
-      tag: latest
+      tag: ${IMAGE_TAG}
     instance_size_slug: basic-xxs
     instance_count: 1
     envs:
       - key: TELEGRAM_BOT_TOKEN
         scope: RUN_TIME
         type: SECRET
+        value: "${TELEGRAM_BOT_TOKEN}"
       - key: OPENAI_API_KEY
         scope: RUN_TIME
         type: SECRET
-      - key: DATABASE_URL
-        scope: RUN_TIME
-        type: SECRET
+        value: "${OPENAI_API_KEY}"
       - key: ACCESS_PIN
         scope: RUN_TIME
-        type: SECRET
+        value: "${ACCESS_PIN}"
       - key: OPENAI_MODEL
         scope: RUN_TIME
         value: gpt-4o-mini

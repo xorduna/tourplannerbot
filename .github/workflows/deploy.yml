@@ -32,7 +32,25 @@ jobs:
           docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
 
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    env:
+      ACCESS_PIN: "2013"
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
       - name: Deploy to DO App Platform
         run: |
-          sed "s/tag: latest/tag: ${{ github.sha }}/" .do/app.yaml > .do/app.deploy.yaml
+          export IMAGE_TAG=${{ github.sha }}
+          envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $OPENAI_API_KEY $ACCESS_PIN' \
+            < .do/app.yaml > .do/app.deploy.yaml
           doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.deploy.yaml
