@@ -81,9 +81,6 @@ jobs:
         with:
           token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 
-      - name: Allow App Platform application in database firewall
-        run: bash scripts/allow-database-app.sh
-
       - name: Deploy to DO App Platform
         env:
           IMAGE_TAG: ${{ github.sha }}
