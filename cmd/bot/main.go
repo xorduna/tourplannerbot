@@ -29,7 +29,7 @@ func main() {
 		Level: logLevel,
 	}))
 
-	logger.Info("starting tourplannerbot")
+	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
 
 	messageHandler := telegram.NewHandler(logger)
 
@@ -43,6 +43,19 @@ func main() {
 
 	ctx, cancelContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancelContext()
+
+	botInfo, err := telegramBot.GetMe(ctx)
+	if err != nil {
+		logger.Error("failed to get bot info from telegram", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("connected to telegram",
+		"bot_id", botInfo.ID,
+		"bot_username", botInfo.Username,
+		"bot_name", botInfo.FirstName,
+		"can_join_groups", botInfo.CanJoinGroups,
+		"can_read_all_group_messages", botInfo.CanReadAllGroupMessages,
+	)
 
 	logger.Info("bot is running, press Ctrl+C to stop")
 	telegramBot.Start(ctx)

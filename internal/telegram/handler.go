@@ -28,11 +28,13 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 	}
 
 	chatID := update.Message.Chat.ID
+	messageThreadID := update.Message.MessageThreadID
 	incomingText := update.Message.Text
 	senderUsername := update.Message.From.Username
 
 	telegramHandler.logger.Info("received message",
 		"chat_id", chatID,
+		"message_thread_id", messageThreadID,
 		"username", senderUsername,
 		"text", incomingText,
 	)
@@ -42,12 +44,14 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 	}
 
 	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID: chatID,
-		Text:   incomingText,
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		Text:            incomingText,
 	})
 	if err != nil {
 		telegramHandler.logger.Error("failed to send echo message",
 			"chat_id", chatID,
+			"message_thread_id", messageThreadID,
 			"error", err,
 		)
 	}
