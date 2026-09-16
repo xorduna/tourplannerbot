@@ -29,10 +29,10 @@ jobs:
       - name: Build and push image
         run: |
           IMAGE_TAG=${{ env.REGISTRY }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          IMAGE_LATEST=${{ env.REGISTRY }}/${{ env.REGISTRY_NAME }}/${{ env.IMAGE_NAME }}:latest
-          docker build -t $IMAGE_TAG -t $IMAGE_LATEST .
+          docker build -t $IMAGE_TAG .
           docker push $IMAGE_TAG
-          docker push $IMAGE_LATEST
 
       - name: Deploy to DO App Platform
-        run: doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.yaml
+        run: |
+          sed "s/tag: latest/tag: ${{ github.sha }}/" .do/app.yaml > .do/app.deploy.yaml
+          doctl apps update ${{ env.DO_APP_ID }} --spec .do/app.deploy.yaml

@@ -26,11 +26,12 @@ docker-up:
 docker-down:
 	docker compose down
 
-## DO Container Registry: build, push and create app for the first time
+## Local architecture image: never used by the production worker
 docker-push:
 	doctl registry login
-	docker build -t $(REGISTRY)/$(IMAGE):latest .
-	docker push $(REGISTRY)/$(IMAGE):latest
+	docker build -t $(REGISTRY)/$(IMAGE):local .
+	docker push $(REGISTRY)/$(IMAGE):local
 
-deploy: docker-push
-	doctl apps create --spec .do/app.yaml
+## Production images and deployments are handled by GitHub Actions on linux/amd64.
+deploy:
+	@echo "Push to main to deploy through GitHub Actions."
