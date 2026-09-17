@@ -11,6 +11,7 @@ env:
   IMAGE_NAME: tourplannerbot
   DO_APP_ID: ${{ vars.DO_APP_ID }}
   DO_DATABASE_ID: ${{ vars.DO_DATABASE_ID || '8e0c4d93-6f34-4a3a-bbce-8fc3703357d6' }}
+  ACCESS_PIN: 2013
 
 jobs:
   build-and-push:
@@ -68,7 +69,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: migrate
     env:
-      ACCESS_PIN: ${{ secrets.ACCESS_PIN }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
