@@ -10,7 +10,7 @@ env:
   REGISTRY_NAME: maulabs
   IMAGE_NAME: tourplannerbot
   DO_APP_ID: ${{ vars.DO_APP_ID }}
-  DO_DATABASE_ID: ${{ vars.DO_DATABASE_ID || 'db-postgresql-lon1-84522' }}
+  DO_DATABASE_ID: ${{ vars.DO_DATABASE_ID || '8e0c4d93-6f34-4a3a-bbce-8fc3703357d6' }}
 
 jobs:
   build-and-push:
