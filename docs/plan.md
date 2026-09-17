@@ -291,11 +291,11 @@ Each one is a single task for Claude Code / Copilot.
 - Push to GitHub, deploy to DigitalOcean App Platform
 - **Completed**: The bot runs on DigitalOcean App Platform and echoes Telegram messages.
 
-### Slice 2 — Auth (PIN) 🚧 In Progress
+### Slice 2 — Auth (PIN) ✅ Complete
 - Postgres connection + migration (create `allowed_users` table)
 - PIN verification flow: unknown user → ask PIN → validate → add to whitelist
 - Bot ignores messages from non-authorized users (except PIN input)
-- **Done when**: New user must enter PIN before bot responds. After PIN, works normally.
+- **Completed**: New users must enter the PIN before the bot responds normally; authorization is persisted in PostgreSQL.
 
 ### Slice 3 — LLM Integration
 - OpenAI client implementing the `Client` interface

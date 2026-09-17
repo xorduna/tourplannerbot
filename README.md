@@ -2,14 +2,14 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (Slice 2 — PIN authentication in progress)
+## Features (Slice 2 complete; next: Slice 3 — LLM integration)
 
 - Echoes messages back (foundation for all future slices)
 - Config loaded from environment variables
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 
-Slice 1 (Echo Bot + infrastructure + deployment) is complete. Slice 2 adds PIN-based access control backed by PostgreSQL.
+Slices 1 and 2 are complete. Slice 2 adds PIN-based access control backed by PostgreSQL; the next planned increment integrates the LLM.
 
 ## Project Structure
 
