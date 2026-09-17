@@ -13,6 +13,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const jokeInstructions = "Respond with one concise, clean, original joke related to the user's message. Reply always in catalan"
+
+// responseGenerator produces a single text response from a user message.
+type responseGenerator interface {
+	Generate(ctx context.Context, instructions string, userInput string) (string, error)
+}
+
 // authorizationResult describes how the handler should respond to an access check.
 type authorizationResult int
 
@@ -27,23 +34,25 @@ const (
 type Handler struct {
 	logger                              *slog.Logger
 	databaseConnection                  *gorm.DB
+	responseGenerator                   responseGenerator
 	accessPIN                           string
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
 }
 
-// NewHandler creates a message handler with the provided logger, database connection, and access PIN.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string) *Handler {
+// NewHandler creates a message handler with the provided logger, database connection, access PIN, and LLM client.
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, responseGenerator responseGenerator) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
+		responseGenerator:                responseGenerator,
 		accessPIN:                        accessPIN,
 		pendingAuthorizationByTelegramID: make(map[int64]struct{}),
 	}
 }
 
 // HandleMessage is the default handler for all incoming Telegram updates.
-// It verifies access before echoing messages from authorized users.
+// It verifies access before generating an LLM response for authorized users.
 func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *bot.Bot, update *models.Update) {
 	if update.Message == nil || update.Message.From == nil {
 		return
@@ -86,7 +95,17 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		if incomingText == "" {
 			return
 		}
-		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, incomingText)
+		generatedText, err := telegramHandler.responseGenerator.Generate(ctx, jokeInstructions, incomingText)
+		if err != nil {
+			telegramHandler.logger.Error("failed to generate LLM response",
+				"chat_id", chatID,
+				"telegram_user_id", senderUser.ID,
+				"error", err,
+			)
+			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar l'acudit. Torna-ho a provar.")
+			return
+		}
+		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, generatedText)
 	}
 }
 

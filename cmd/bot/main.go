@@ -9,6 +9,7 @@ import (
 
 	"tourplannerbot/internal/config"
 	"tourplannerbot/internal/database"
+	"tourplannerbot/internal/llm"
 	"tourplannerbot/internal/telegram"
 
 	"github.com/go-telegram/bot"
@@ -48,7 +49,13 @@ func main() {
 	}
 	defer sqlDatabaseConnection.Close()
 
-	messageHandler := telegram.NewHandler(logger, databaseConnection, applicationConfig.AccessPIN)
+	llmClient := llm.NewClient(
+		applicationConfig.OpenAIAPIKey,
+		applicationConfig.OpenAIBaseURL,
+		applicationConfig.OpenAIModel,
+		applicationConfig.LLMMaxTokens,
+	)
+	messageHandler := telegram.NewHandler(logger, databaseConnection, applicationConfig.AccessPIN, llmClient)
 
 	telegramBot, err := bot.New(applicationConfig.TelegramBotToken,
 		bot.WithDefaultHandler(messageHandler.HandleMessage),

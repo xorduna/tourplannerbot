@@ -231,7 +231,7 @@ Respond in the same language Diana uses.
 ```env
 TELEGRAM_BOT_TOKEN=
 OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=gpt-5.5
 OPENAI_BASE_URL=https://api.openai.com/v1
 LLM_MAX_TOKENS=2048
 TOOL_CALL_MAX_ITERATIONS=10
@@ -297,8 +297,8 @@ Each one is a single task for Claude Code / Copilot.
 - Bot ignores messages from non-authorized users (except PIN input)
 - **Completed**: New users must enter the PIN before the bot responds normally; authorization is persisted in PostgreSQL.
 
-### Slice 3 — LLM Integration
-- OpenAI client implementing the `Client` interface
+### Slice 3 — LLM Integration 🚧 In Progress
+- OpenAI Responses API client
 - Bot sends user message to OpenAI, returns the response
 - Hardcoded system prompt for now
 - No history, no tools, no distinction between group/private

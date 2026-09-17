@@ -44,7 +44,7 @@ func LoadFromEnvironment() (*Config, error) {
 
 	openAIModel := os.Getenv("OPENAI_MODEL")
 	if openAIModel == "" {
-		openAIModel = "gpt-4o-mini"
+		openAIModel = "gpt-5.5"
 	}
 
 	openAIBaseURL := os.Getenv("OPENAI_BASE_URL")

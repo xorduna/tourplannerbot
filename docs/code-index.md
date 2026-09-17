@@ -41,6 +41,21 @@ used_by:
   - Makefile
 ```
 
+## llm.md
+
+```yaml
+title: Stateless LLM Replies
+description: OpenAI Responses API integration for the Slice 3 one-message joke response.
+methods:
+  - llm.Client.Generate: Sends one stateless Responses API request and returns its text output.
+depends_on:
+  - internal/llm/client.go
+  - internal/config/config.go
+used_by:
+  - cmd/bot/main.go
+  - internal/telegram/handler.go
+```
+
 ## plan.md
 
 ```yaml

@@ -2,14 +2,14 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (Slice 2 complete; next: Slice 3 — LLM integration)
+## Features (Slice 3 — LLM integration in progress)
 
 - Echoes messages back (foundation for all future slices)
 - Config loaded from environment variables
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 
-Slices 1 and 2 are complete. Slice 2 adds PIN-based access control backed by PostgreSQL; the next planned increment integrates the LLM.
+Slices 1 and 2 are complete. Slice 3 sends each authorized text message to the LLM independently and returns one joke related to that message.
 
 ## Project Structure
 
@@ -18,6 +18,7 @@ cmd/bot/main.go               # Entrypoint
 internal/
   config/config.go            # Env var loading
   database/database.go        # GORM PostgreSQL connection
+  llm/client.go               # Official OpenAI Go SDK Responses API client
   models/allowed_user.go      # GORM model for authorized Telegram users
   telegram/handler.go         # Message routing
 migrations/                   # Goose SQL migrations
@@ -70,8 +71,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `DATABASE_URL` | yes | — | PostgreSQL connection URL |
 | `OPENAI_API_KEY` | yes | — | OpenAI (or compatible) API key |
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
-| `OPENAI_MODEL` | no | `gpt-4o-mini` | Model name |
-| `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Base URL (swap for OpenRouter etc.) |
+| `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
+| `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
 | `LLM_MAX_TOKENS` | no | `2048` | Max tokens per LLM response |
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |
 | `LOG_LEVEL` | no | `info` | `info` or `debug` |

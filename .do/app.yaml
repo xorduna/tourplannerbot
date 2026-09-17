@@ -29,7 +29,7 @@ workers:
         value: "${ACCESS_PIN}"
       - key: OPENAI_MODEL
         scope: RUN_TIME
-        value: gpt-4o-mini
+        value: gpt-5.5
       - key: OPENAI_BASE_URL
         scope: RUN_TIME
         value: https://api.openai.com/v1
