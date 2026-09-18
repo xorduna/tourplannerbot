@@ -9,11 +9,16 @@ import (
 )
 
 type responseRequest struct {
-	Model           string `json:"model"`
-	Instructions    string `json:"instructions"`
-	Input           string `json:"input"`
-	MaxOutputTokens int    `json:"max_output_tokens"`
-	Store           bool   `json:"store"`
+	Model           string         `json:"model"`
+	Instructions    string         `json:"instructions"`
+	Input           []inputMessage `json:"input"`
+	MaxOutputTokens int            `json:"max_output_tokens"`
+	Store           bool           `json:"store"`
+}
+
+type inputMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // TestClientGenerate verifies the OpenAI SDK request and text extraction.
@@ -38,8 +43,18 @@ func TestClientGenerate(t *testing.T) {
 		if requestPayload.Instructions != "Tell a joke." {
 			t.Errorf("instructions = %q", requestPayload.Instructions)
 		}
-		if requestPayload.Input != "cats" {
-			t.Errorf("input = %q", requestPayload.Input)
+		wantInput := []inputMessage{
+			{Role: "user", Content: "Tell me something about cats."},
+			{Role: "assistant", Content: "Cats are curious."},
+			{Role: "user", Content: "Tell me a joke."},
+		}
+		if len(requestPayload.Input) != len(wantInput) {
+			t.Fatalf("input length = %d, want %d", len(requestPayload.Input), len(wantInput))
+		}
+		for inputIndex, wantMessage := range wantInput {
+			if requestPayload.Input[inputIndex] != wantMessage {
+				t.Errorf("input[%d] = %#v, want %#v", inputIndex, requestPayload.Input[inputIndex], wantMessage)
+			}
 		}
 		if requestPayload.MaxOutputTokens != 128 {
 			t.Errorf("max_output_tokens = %d, want 128", requestPayload.MaxOutputTokens)
@@ -53,7 +68,11 @@ func TestClientGenerate(t *testing.T) {
 	defer testServer.Close()
 
 	client := NewClient("test-api-key", testServer.URL+"/v1", "gpt-5.5", 128)
-	responseText, err := client.Generate(context.Background(), "Tell a joke.", "cats")
+	responseText, err := client.Generate(context.Background(), "Tell a joke.", []Message{
+		{Role: "user", Content: "Tell me something about cats."},
+		{Role: "assistant", Content: "Cats are curious."},
+		{Role: "user", Content: "Tell me a joke."},
+	})
 	if err != nil {
 		t.Fatalf("Generate returned an error: %v", err)
 	}

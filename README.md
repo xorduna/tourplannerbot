@@ -2,15 +2,15 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (Slices 1–3 complete)
+## Features (Slices 1–4 complete)
 
 - PIN-based authorization persisted in PostgreSQL
-- Stateless LLM replies for authorized messages
+- Conversation history isolated by Telegram chat and topic
 - Config loaded from environment variables
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 
-Slices 1–3 are complete. Slice 3 sends each authorized text message to the LLM independently and returns one joke related to that message.
+Slices 1–4 are complete. The bot stores authorized user messages and generated replies, then sends the newest messages from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
 ## Project Structure
 
@@ -20,7 +20,7 @@ internal/
   config/config.go            # Env var loading
   database/database.go        # GORM PostgreSQL connection
   llm/client.go               # Official OpenAI Go SDK Responses API client
-  models/allowed_user.go      # GORM model for authorized Telegram users
+  models/                      # GORM models for authorized users and messages
   telegram/handler.go         # Message routing
 migrations/                   # Goose SQL migrations
 prompts/
@@ -75,6 +75,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
 | `LLM_MAX_TOKENS` | no | `2048` | Max tokens per LLM response |
+| `LLM_HISTORY_MAX_MESSAGES` | no | `20` | Newest messages included from the current chat/topic |
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |
 | `LOG_LEVEL` | no | `info` | `info` or `debug` |
 

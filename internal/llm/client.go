@@ -20,6 +20,12 @@ type Client struct {
 	maxOutputTokens int
 }
 
+// Message is one text turn supplied as context to the Responses API.
+type Message struct {
+	Role    string
+	Content string
+}
+
 // NewClient creates an OpenAI client using the supplied connection settings.
 func NewClient(apiKey string, baseURL string, model string, maxOutputTokens int) *Client {
 	openAIClient := openai.NewClient(
@@ -35,12 +41,24 @@ func NewClient(apiKey string, baseURL string, model string, maxOutputTokens int)
 	}
 }
 
-// Generate sends instructions and userInput to the Responses API and returns its text reply.
-func (client *Client) Generate(ctx context.Context, instructions string, userInput string) (string, error) {
+// Generate sends instructions and conversationMessages to the Responses API and
+// returns its text reply. Message roles must be user or assistant.
+func (client *Client) Generate(ctx context.Context, instructions string, conversationMessages []Message) (string, error) {
+	inputItems := make(responses.ResponseInputParam, 0, len(conversationMessages))
+	for _, conversationMessage := range conversationMessages {
+		if conversationMessage.Role != "user" && conversationMessage.Role != "assistant" {
+			return "", fmt.Errorf("unsupported conversation message role: %s", conversationMessage.Role)
+		}
+		inputItems = append(inputItems, responses.ResponseInputItemParamOfMessage(
+			conversationMessage.Content,
+			responses.EasyInputMessageRole(conversationMessage.Role),
+		))
+	}
+
 	response, err := client.openAIClient.Responses.New(ctx, responses.ResponseNewParams{
 		Model:           client.model,
 		Instructions:    openai.String(instructions),
-		Input:           responses.ResponseNewParamsInputUnion{OfString: openai.String(userInput)},
+		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: inputItems},
 		MaxOutputTokens: openai.Int(int64(client.maxOutputTokens)),
 		Store:           openai.Bool(false),
 	})

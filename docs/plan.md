@@ -304,11 +304,12 @@ Each one is a single task for Claude Code / Copilot.
 - No history, no tools, no distinction between group/private
 - **Completed**: Authorized user messages receive one stateless, LLM-generated joke related to their message.
 
-### Slice 4 — Conversation History
+### Slice 4 — Conversation History ✅ Complete
 - Create `messages` table
 - Save every message (user + assistant) per `chat_id` with `user_id`
-- Load last N messages when a new message arrives, send as context to LLM
+- Load last N messages per `(chat_id, message_thread_id)` when a new message arrives, send as context to LLM
 - **Done when**: The bot remembers what you said earlier in the same chat
+- **Completed**: Authorized messages and generated replies are persisted. The LLM receives the newest messages from the same chat/topic; `message_thread_id = 0` identifies chats without topics.
 
 ### Slice 5 — Group vs Private Mode
 - Detect chat type from Telegram update

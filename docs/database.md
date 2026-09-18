@@ -4,10 +4,13 @@ description: PostgreSQL connection, GORM persistence, Goose migration, and Digit
 methods:
   - database.Open: Opens and validates the GORM PostgreSQL connection.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
+  - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
   - migrations/00001_create_allowed_users.sql
+  - migrations/00002_create_messages.sql
   - internal/database/database.go
   - internal/models/allowed_user.go
+  - internal/models/message.go
   - .github/workflows/deploy.yml
 used_by:
   - cmd/bot/main.go
@@ -18,7 +21,9 @@ used_by:
 
 ## Application Database Access
 
-The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the process checks the connection before creating the Telegram bot. Models are stored in `internal/models/`; the Telegram handler uses direct GORM queries for the current simple authorization flow. The schema is managed only by Goose migrations, not by GORM auto-migration.
+The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the process checks the connection before creating the Telegram bot. Models are stored in `internal/models/`; the Telegram handler uses direct GORM queries for authorization and conversation history. The schema is managed only by Goose migrations, not by GORM auto-migration.
+
+The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group.
 
 ## Local Development
 

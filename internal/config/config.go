@@ -14,6 +14,7 @@ type Config struct {
 	OpenAIModel           string
 	OpenAIBaseURL         string
 	LLMMaxTokens          int
+	LLMHistoryMaxMessages int
 	ToolCallMaxIterations int
 	AccessPIN             string
 	LogLevel              string
@@ -66,6 +67,15 @@ func LoadFromEnvironment() (*Config, error) {
 		llmMaxTokens = parsedValue
 	}
 
+	llmHistoryMaxMessages := 20
+	if rawValue := os.Getenv("LLM_HISTORY_MAX_MESSAGES"); rawValue != "" {
+		parsedValue, err := strconv.Atoi(rawValue)
+		if err != nil || parsedValue < 1 {
+			return nil, fmt.Errorf("LLM_HISTORY_MAX_MESSAGES must be a positive integer, got: %s", rawValue)
+		}
+		llmHistoryMaxMessages = parsedValue
+	}
+
 	toolCallMaxIterations := 10
 	if rawValue := os.Getenv("TOOL_CALL_MAX_ITERATIONS"); rawValue != "" {
 		parsedValue, err := strconv.Atoi(rawValue)
@@ -82,6 +92,7 @@ func LoadFromEnvironment() (*Config, error) {
 		OpenAIModel:           openAIModel,
 		OpenAIBaseURL:         openAIBaseURL,
 		LLMMaxTokens:          llmMaxTokens,
+		LLMHistoryMaxMessages: llmHistoryMaxMessages,
 		ToolCallMaxIterations: toolCallMaxIterations,
 		AccessPIN:             accessPIN,
 		LogLevel:              logLevel,

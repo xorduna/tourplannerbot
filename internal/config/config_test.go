@@ -17,4 +17,7 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.OpenAIModel != "gpt-5.5" {
 		t.Errorf("OpenAIModel = %q, want gpt-5.5", applicationConfig.OpenAIModel)
 	}
+	if applicationConfig.LLMHistoryMaxMessages != 20 {
+		t.Errorf("LLMHistoryMaxMessages = %d, want 20", applicationConfig.LLMHistoryMaxMessages)
+	}
 }

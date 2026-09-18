@@ -2,10 +2,12 @@ package telegram
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 
+	"tourplannerbot/internal/llm"
 	applicationModels "tourplannerbot/internal/models"
 
 	"github.com/go-telegram/bot"
@@ -15,9 +17,9 @@ import (
 
 const jokeInstructions = "Respond with one concise, clean, original joke related to the user's message. Reply always in catalan"
 
-// responseGenerator produces a single text response from a user message.
+// responseGenerator produces one text response from conversation context.
 type responseGenerator interface {
-	Generate(ctx context.Context, instructions string, userInput string) (string, error)
+	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message) (string, error)
 }
 
 // authorizationResult describes how the handler should respond to an access check.
@@ -36,17 +38,19 @@ type Handler struct {
 	databaseConnection                  *gorm.DB
 	responseGenerator                   responseGenerator
 	accessPIN                           string
+	messageHistoryMaxMessages           int
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
 }
 
-// NewHandler creates a message handler with the provided logger, database connection, access PIN, and LLM client.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, responseGenerator responseGenerator) *Handler {
+// NewHandler creates a message handler with the provided dependencies and history limit.
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, messageHistoryMaxMessages int, responseGenerator responseGenerator) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
 		responseGenerator:                responseGenerator,
 		accessPIN:                        accessPIN,
+		messageHistoryMaxMessages:        messageHistoryMaxMessages,
 		pendingAuthorizationByTelegramID: make(map[int64]struct{}),
 	}
 }
@@ -95,7 +99,29 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		if incomingText == "" {
 			return
 		}
-		generatedText, err := telegramHandler.responseGenerator.Generate(ctx, jokeInstructions, incomingText)
+		if err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText); err != nil {
+			telegramHandler.logger.Error("failed to save user message",
+				"chat_id", chatID,
+				"message_thread_id", messageThreadID,
+				"telegram_user_id", senderUser.ID,
+				"error", err,
+			)
+			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar el missatge. Torna-ho a provar.")
+			return
+		}
+
+		conversationMessages, err := telegramHandler.loadConversationMessages(ctx, chatID, messageThreadID)
+		if err != nil {
+			telegramHandler.logger.Error("failed to load conversation messages",
+				"chat_id", chatID,
+				"message_thread_id", messageThreadID,
+				"error", err,
+			)
+			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut recuperar la conversa. Torna-ho a provar.")
+			return
+		}
+
+		generatedText, err := telegramHandler.responseGenerator.Generate(ctx, jokeInstructions, conversationMessages)
 		if err != nil {
 			telegramHandler.logger.Error("failed to generate LLM response",
 				"chat_id", chatID,
@@ -105,8 +131,67 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar l'acudit. Torna-ho a provar.")
 			return
 		}
+		if err := telegramHandler.saveAssistantMessage(ctx, chatID, messageThreadID, generatedText); err != nil {
+			telegramHandler.logger.Error("failed to save assistant message",
+				"chat_id", chatID,
+				"message_thread_id", messageThreadID,
+				"error", err,
+			)
+			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar la resposta. Torna-ho a provar.")
+			return
+		}
 		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, generatedText)
 	}
+}
+
+// saveUserMessage persists an authorized user's text in its Telegram conversation.
+func (telegramHandler *Handler) saveUserMessage(ctx context.Context, chatID int64, messageThreadID int, userID int64, content string) error {
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		UserID:          &userID,
+		Role:            applicationModels.MessageRoleUser,
+		Content:         content,
+	}).Error
+}
+
+// saveAssistantMessage persists a generated assistant response in its Telegram conversation.
+func (telegramHandler *Handler) saveAssistantMessage(ctx context.Context, chatID int64, messageThreadID int, content string) error {
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		Role:            applicationModels.MessageRoleAssistant,
+		Content:         content,
+	}).Error
+}
+
+// loadConversationMessages returns the newest configured messages in chronological order.
+func (telegramHandler *Handler) loadConversationMessages(ctx context.Context, chatID int64, messageThreadID int) ([]llm.Message, error) {
+	if telegramHandler.messageHistoryMaxMessages < 1 {
+		return nil, fmt.Errorf("message history limit must be positive")
+	}
+
+	var persistedMessages []applicationModels.Message
+	err := telegramHandler.databaseConnection.WithContext(ctx).
+		Where("chat_id = ? AND message_thread_id = ?", chatID, messageThreadID).
+		Order("created_at DESC, id DESC").
+		Limit(telegramHandler.messageHistoryMaxMessages).
+		Find(&persistedMessages).
+		Error
+	if err != nil {
+		return nil, fmt.Errorf("query persisted conversation messages: %w", err)
+	}
+
+	conversationMessages := make([]llm.Message, 0, len(persistedMessages))
+	for messageIndex := len(persistedMessages) - 1; messageIndex >= 0; messageIndex-- {
+		persistedMessage := persistedMessages[messageIndex]
+		conversationMessages = append(conversationMessages, llm.Message{
+			Role:    persistedMessage.Role,
+			Content: persistedMessage.Content,
+		})
+	}
+
+	return conversationMessages, nil
 }
 
 // authorizeUser checks GORM directly for existing access and handles the temporary PIN prompt state.

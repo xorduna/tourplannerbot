@@ -31,10 +31,13 @@ description: PostgreSQL connection, GORM persistence, Goose migration, and Digit
 methods:
   - database.Open: Opens and validates the GORM PostgreSQL connection.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
+  - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
   - migrations/00001_create_allowed_users.sql
+  - migrations/00002_create_messages.sql
   - internal/database/database.go
   - internal/models/allowed_user.go
+  - internal/models/message.go
   - .github/workflows/deploy.yml
 used_by:
   - cmd/bot/main.go
@@ -44,10 +47,10 @@ used_by:
 ## llm.md
 
 ```yaml
-title: Stateless LLM Replies
-description: OpenAI Responses API integration for the Slice 3 one-message joke response.
+title: Conversation-Aware LLM Replies
+description: OpenAI Responses API integration that provides persisted conversation turns as message context.
 methods:
-  - llm.Client.Generate: Sends one stateless Responses API request and returns its text output.
+  - llm.Client.Generate: Sends structured user and assistant conversation messages and returns its text output.
 depends_on:
   - internal/llm/client.go
   - internal/config/config.go

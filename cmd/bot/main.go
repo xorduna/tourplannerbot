@@ -55,7 +55,13 @@ func main() {
 		applicationConfig.OpenAIModel,
 		applicationConfig.LLMMaxTokens,
 	)
-	messageHandler := telegram.NewHandler(logger, databaseConnection, applicationConfig.AccessPIN, llmClient)
+	messageHandler := telegram.NewHandler(
+		logger,
+		databaseConnection,
+		applicationConfig.AccessPIN,
+		applicationConfig.LLMHistoryMaxMessages,
+		llmClient,
+	)
 
 	telegramBot, err := bot.New(applicationConfig.TelegramBotToken,
 		bot.WithDefaultHandler(messageHandler.HandleMessage),
