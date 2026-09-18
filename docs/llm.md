@@ -17,6 +17,8 @@ The bot makes one OpenAI Responses API call for every authorized text message. A
 
 The request uses `store: false` and does not pass a previous response identifier. Conversation state stays in the application's PostgreSQL database and is supplied as structured `user` and `assistant` input items on every request. This avoids mixing one Telegram topic's context with another's.
 
+Before sending a model response, the bot converts common Markdown to Telegram HTML: headings become bold, and bold, italic, code, links, lists, quote markers, and horizontal rules are rendered safely. Other text is HTML-escaped.
+
 ## Configuration
 
 `OPENAI_MODEL` selects the model and defaults to `gpt-5.5` when unset. `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `LLM_MAX_TOKENS` configure the endpoint, authentication, and response limit. `LLM_HISTORY_MAX_MESSAGES` defaults to 20 and bounds the number of persisted messages sent as context. Raise this variable if a conversation needs a longer working history. The implementation uses the official `openai-go` SDK and sends only common Responses API fields, so the model can be safely overridden without model-specific reasoning settings.

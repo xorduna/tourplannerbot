@@ -10,4 +10,4 @@ set -euo pipefail
 
 envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $DATABASE_URL $OPENAI_API_KEY $ACCESS_PIN' \
   < .do/app.yaml > .do/app.deploy.yaml
-doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml
+doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml --wait

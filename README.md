@@ -85,5 +85,5 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 
 - Component type: **Worker** (polling, no inbound HTTP)
 - Set all required env vars as secrets in the DO console
-- Push to GitHub → auto-deploy triggers
+- Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - The GitHub workflow runs migrations in a dedicated job before deploying the worker. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret.

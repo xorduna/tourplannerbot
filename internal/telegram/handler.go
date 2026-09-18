@@ -302,7 +302,8 @@ func (telegramHandler *Handler) sendText(ctx context.Context, telegramBot *bot.B
 	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:          chatID,
 		MessageThreadID: messageThreadID,
-		Text:            text,
+		Text:            formatTelegramHTML(text),
+		ParseMode:       models.ParseModeHTML,
 	})
 	if err != nil {
 		telegramHandler.logger.Error("failed to send Telegram message",
