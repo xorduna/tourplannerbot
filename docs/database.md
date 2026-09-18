@@ -25,6 +25,8 @@ The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the pr
 
 The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group.
 
+The `llm_requests` table records each LLM attempt, including failures. It stores provider/model, duration, token usage, an optional immutable cost estimate, and a link to the source user message; it intentionally does not duplicate prompt or response text. Use its timestamp, model, and conversation indexes for consumption reports.
+
 ## Local Development
 
 Set `DATABASE_URL` in `.env`, then run:

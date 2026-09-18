@@ -74,6 +74,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
 | `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
+| `LLM_PROVIDER` | no | `openai` | Provider label written to LLM audit records |
+| `LLM_TARIFFS_DIR` | no | `tariffs` | Versioned CSV directory used to price the configured model |
 | `LLM_MAX_TOKENS` | no | `2048` | Max tokens per LLM response |
 | `LLM_HISTORY_MAX_MESSAGES` | no | `20` | Newest messages included from the current chat/topic |
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |

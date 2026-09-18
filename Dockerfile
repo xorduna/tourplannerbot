@@ -10,4 +10,5 @@ RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=builder /app/bot .
 COPY prompts/ ./prompts/
+COPY tariffs/ ./tariffs/
 CMD ["./bot"]

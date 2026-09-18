@@ -63,12 +63,17 @@ func TestClientGenerate(t *testing.T) {
 			t.Error("store = true, want false")
 		}
 		responseWriter.Header().Set("Content-Type", "application/json")
-		_, _ = responseWriter.Write([]byte(`{"output":[{"type":"message","content":[{"type":"output_text","text":"Per què el gat porta ordinador? Per caçar ratolins."}]}]}`))
+		_, _ = responseWriter.Write([]byte(`{"id":"resp_123","output":[{"type":"message","content":[{"type":"output_text","text":"Per què el gat porta ordinador? Per caçar ratolins."}]}],"usage":{"input_tokens":100,"input_tokens_details":{"cached_tokens":20},"output_tokens":30,"output_tokens_details":{"reasoning_tokens":10},"total_tokens":130}}`))
 	}))
 	defer testServer.Close()
 
-	client := NewClient("test-api-key", testServer.URL+"/v1", "gpt-5.5", 128)
-	responseText, err := client.Generate(context.Background(), "Tell a joke.", []Message{
+	client := NewClient("test-api-key", testServer.URL+"/v1", "openai", "gpt-5.5", 128, &Pricing{
+		InputMicroUSDPerMillion:       2_000_000,
+		CachedInputMicroUSDPerMillion: 1_000_000,
+		OutputMicroUSDPerMillion:      4_000_000,
+		Version:                       "test-price-v1",
+	})
+	generation, err := client.Generate(context.Background(), "Tell a joke.", []Message{
 		{Role: "user", Content: "Tell me something about cats."},
 		{Role: "assistant", Content: "Cats are curious."},
 		{Role: "user", Content: "Tell me a joke."},
@@ -76,7 +81,19 @@ func TestClientGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate returned an error: %v", err)
 	}
-	if responseText != "Per què el gat porta ordinador? Per caçar ratolins." {
-		t.Errorf("response text = %q", responseText)
+	if generation.Text != "Per què el gat porta ordinador? Per caçar ratolins." {
+		t.Errorf("response text = %q", generation.Text)
+	}
+	if generation.ProviderResponseID != "resp_123" {
+		t.Errorf("provider response ID = %q", generation.ProviderResponseID)
+	}
+	if generation.InputTokens != 100 || generation.CachedInputTokens != 20 || generation.OutputTokens != 30 || generation.ReasoningTokens != 10 || generation.TotalTokens != 130 {
+		t.Errorf("usage = %#v", generation)
+	}
+	if generation.EstimatedCostMicroUSD == nil || *generation.EstimatedCostMicroUSD != 300 {
+		t.Errorf("estimated cost = %v, want 300 micro-USD", generation.EstimatedCostMicroUSD)
+	}
+	if generation.PricingVersion != "test-price-v1" {
+		t.Errorf("pricing version = %q", generation.PricingVersion)
 	}
 }

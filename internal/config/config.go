@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+
+	"tourplannerbot/internal/llm"
 )
 
 // Config holds all configuration values loaded from environment variables.
@@ -13,7 +15,10 @@ type Config struct {
 	OpenAIAPIKey          string
 	OpenAIModel           string
 	OpenAIBaseURL         string
+	LLMProvider           string
+	LLMTariffsDirectory   string
 	LLMMaxTokens          int
+	LLMPricing            *llm.Pricing
 	LLMHistoryMaxMessages int
 	ToolCallMaxIterations int
 	AccessPIN             string
@@ -51,6 +56,21 @@ func LoadFromEnvironment() (*Config, error) {
 	openAIBaseURL := os.Getenv("OPENAI_BASE_URL")
 	if openAIBaseURL == "" {
 		openAIBaseURL = "https://api.openai.com/v1"
+	}
+
+	llmProvider := os.Getenv("LLM_PROVIDER")
+	if llmProvider == "" {
+		llmProvider = "openai"
+	}
+
+	llmTariffsDirectory := os.Getenv("LLM_TARIFFS_DIR")
+	if llmTariffsDirectory == "" {
+		llmTariffsDirectory = "tariffs"
+	}
+
+	llmPricing, err := llm.LoadPricing(llmTariffsDirectory, llmProvider, openAIModel)
+	if err != nil {
+		return nil, err
 	}
 
 	logLevel := os.Getenv("LOG_LEVEL")
@@ -91,7 +111,10 @@ func LoadFromEnvironment() (*Config, error) {
 		OpenAIAPIKey:          openAIAPIKey,
 		OpenAIModel:           openAIModel,
 		OpenAIBaseURL:         openAIBaseURL,
+		LLMProvider:           llmProvider,
+		LLMTariffsDirectory:   llmTariffsDirectory,
 		LLMMaxTokens:          llmMaxTokens,
+		LLMPricing:            llmPricing,
 		LLMHistoryMaxMessages: llmHistoryMaxMessages,
 		ToolCallMaxIterations: toolCallMaxIterations,
 		AccessPIN:             accessPIN,

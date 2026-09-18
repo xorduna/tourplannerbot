@@ -15,11 +15,9 @@ import (
 	"gorm.io/gorm"
 )
 
-const jokeInstructions = "Respond with one concise, clean, original joke related to the user's message. Reply always in catalan"
-
 // responseGenerator produces one text response from conversation context.
 type responseGenerator interface {
-	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message) (string, error)
+	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message) (llm.Generation, error)
 }
 
 // authorizationResult describes how the handler should respond to an access check.
@@ -38,18 +36,20 @@ type Handler struct {
 	databaseConnection                  *gorm.DB
 	responseGenerator                   responseGenerator
 	accessPIN                           string
+	systemInstructions                  string
 	messageHistoryMaxMessages           int
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
 }
 
-// NewHandler creates a message handler with the provided dependencies and history limit.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, messageHistoryMaxMessages int, responseGenerator responseGenerator) *Handler {
+// NewHandler creates a message handler with the supplied system instructions and history limit.
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, systemInstructions string, messageHistoryMaxMessages int, responseGenerator responseGenerator) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
 		responseGenerator:                responseGenerator,
 		accessPIN:                        accessPIN,
+		systemInstructions:               systemInstructions,
 		messageHistoryMaxMessages:        messageHistoryMaxMessages,
 		pendingAuthorizationByTelegramID: make(map[int64]struct{}),
 	}
@@ -99,7 +99,8 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		if incomingText == "" {
 			return
 		}
-		if err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText); err != nil {
+		userMessage, err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText)
+		if err != nil {
 			telegramHandler.logger.Error("failed to save user message",
 				"chat_id", chatID,
 				"message_thread_id", messageThreadID,
@@ -121,17 +122,24 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			return
 		}
 
-		generatedText, err := telegramHandler.responseGenerator.Generate(ctx, jokeInstructions, conversationMessages)
+		generation, err := telegramHandler.responseGenerator.Generate(ctx, telegramHandler.systemInstructions, conversationMessages)
+		if loggingError := telegramHandler.saveLLMRequest(ctx, userMessage.ID, chatID, messageThreadID, senderUser.ID, generation, err); loggingError != nil {
+			telegramHandler.logger.Error("failed to save LLM request audit record",
+				"chat_id", chatID,
+				"message_thread_id", messageThreadID,
+				"error", loggingError,
+			)
+		}
 		if err != nil {
 			telegramHandler.logger.Error("failed to generate LLM response",
 				"chat_id", chatID,
 				"telegram_user_id", senderUser.ID,
 				"error", err,
 			)
-			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar l'acudit. Torna-ho a provar.")
+			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar la resposta. Torna-ho a provar.")
 			return
 		}
-		if err := telegramHandler.saveAssistantMessage(ctx, chatID, messageThreadID, generatedText); err != nil {
+		if err := telegramHandler.saveAssistantMessage(ctx, chatID, messageThreadID, generation.Text); err != nil {
 			telegramHandler.logger.Error("failed to save assistant message",
 				"chat_id", chatID,
 				"message_thread_id", messageThreadID,
@@ -140,19 +148,62 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar la resposta. Torna-ho a provar.")
 			return
 		}
-		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, generatedText)
+		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, generation.Text)
 	}
 }
 
 // saveUserMessage persists an authorized user's text in its Telegram conversation.
-func (telegramHandler *Handler) saveUserMessage(ctx context.Context, chatID int64, messageThreadID int, userID int64, content string) error {
-	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+func (telegramHandler *Handler) saveUserMessage(ctx context.Context, chatID int64, messageThreadID int, userID int64, content string) (*applicationModels.Message, error) {
+	message := &applicationModels.Message{
 		ChatID:          chatID,
 		MessageThreadID: messageThreadID,
 		UserID:          &userID,
 		Role:            applicationModels.MessageRoleUser,
 		Content:         content,
-	}).Error
+	}
+	if err := telegramHandler.databaseConnection.WithContext(ctx).Create(message).Error; err != nil {
+		return nil, err
+	}
+	return message, nil
+}
+
+// saveLLMRequest persists an LLM call's metadata without duplicating its text.
+func (telegramHandler *Handler) saveLLMRequest(ctx context.Context, sourceMessageID uint64, chatID int64, messageThreadID int, userID int64, generation llm.Generation, generationError error) error {
+	status := applicationModels.LLMRequestStatusSucceeded
+	if generationError != nil {
+		status = applicationModels.LLMRequestStatusFailed
+	}
+
+	auditRecord := applicationModels.LLMRequest{
+		SourceMessageID:       &sourceMessageID,
+		ChatID:                chatID,
+		MessageThreadID:       messageThreadID,
+		TelegramUserID:        &userID,
+		Provider:              generation.Provider,
+		Model:                 generation.Model,
+		Operation:             "response",
+		Status:                status,
+		DurationMS:            int(generation.Duration.Milliseconds()),
+		EstimatedCostMicroUSD: generation.EstimatedCostMicroUSD,
+	}
+	if generation.ProviderResponseID != "" {
+		auditRecord.ProviderResponseID = &generation.ProviderResponseID
+	}
+	if generation.PricingVersion != "" {
+		auditRecord.PricingVersion = &generation.PricingVersion
+	}
+	if generation.UsageAvailable {
+		auditRecord.InputTokens = &generation.InputTokens
+		auditRecord.CachedInputTokens = &generation.CachedInputTokens
+		auditRecord.OutputTokens = &generation.OutputTokens
+		auditRecord.ReasoningTokens = &generation.ReasoningTokens
+		auditRecord.TotalTokens = &generation.TotalTokens
+	} else if generationError != nil {
+		errorMessage := generationError.Error()
+		auditRecord.ErrorMessage = &errorMessage
+	}
+
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&auditRecord).Error
 }
 
 // saveAssistantMessage persists a generated assistant response in its Telegram conversation.

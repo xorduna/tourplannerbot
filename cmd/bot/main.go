@@ -10,6 +10,7 @@ import (
 	"tourplannerbot/internal/config"
 	"tourplannerbot/internal/database"
 	"tourplannerbot/internal/llm"
+	"tourplannerbot/internal/prompt"
 	"tourplannerbot/internal/telegram"
 
 	"github.com/go-telegram/bot"
@@ -52,13 +53,21 @@ func main() {
 	llmClient := llm.NewClient(
 		applicationConfig.OpenAIAPIKey,
 		applicationConfig.OpenAIBaseURL,
+		applicationConfig.LLMProvider,
 		applicationConfig.OpenAIModel,
 		applicationConfig.LLMMaxTokens,
+		applicationConfig.LLMPricing,
 	)
+	systemInstructions, err := prompt.Load("prompts/system_query.md")
+	if err != nil {
+		logger.Error("failed to load query system prompt", "error", err)
+		os.Exit(1)
+	}
 	messageHandler := telegram.NewHandler(
 		logger,
 		databaseConnection,
 		applicationConfig.AccessPIN,
+		systemInstructions,
 		applicationConfig.LLMHistoryMaxMessages,
 		llmClient,
 	)
