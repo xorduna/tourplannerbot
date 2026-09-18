@@ -297,12 +297,12 @@ Each one is a single task for Claude Code / Copilot.
 - Bot ignores messages from non-authorized users (except PIN input)
 - **Completed**: New users must enter the PIN before the bot responds normally; authorization is persisted in PostgreSQL.
 
-### Slice 3 — LLM Integration 🚧 In Progress
+### Slice 3 — LLM Integration ✅ Complete
 - OpenAI Responses API client
 - Bot sends user message to OpenAI, returns the response
 - Hardcoded system prompt for now
 - No history, no tools, no distinction between group/private
-- **Done when**: Authorized user messages the bot, gets an LLM-generated answer
+- **Completed**: Authorized user messages receive one stateless, LLM-generated joke related to their message.
 
 ### Slice 4 — Conversation History
 - Create `messages` table

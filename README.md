@@ -2,14 +2,15 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (Slice 3 — LLM integration in progress)
+## Features (Slices 1–3 complete)
 
-- Echoes messages back (foundation for all future slices)
+- PIN-based authorization persisted in PostgreSQL
+- Stateless LLM replies for authorized messages
 - Config loaded from environment variables
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 
-Slices 1 and 2 are complete. Slice 3 sends each authorized text message to the LLM independently and returns one joke related to that message.
+Slices 1–3 are complete. Slice 3 sends each authorized text message to the LLM independently and returns one joke related to that message.
 
 ## Project Structure
 
