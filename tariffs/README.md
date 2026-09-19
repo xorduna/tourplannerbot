@@ -13,10 +13,12 @@ and update the rows from the official provider price page. Keep all models that
 the bot may use in every monthly snapshot. The filename is saved in each
 `llm_requests.pricing_version` record.
 
-Rates are whole micro-USD per one million tokens. For example, `$0.15 / 1M`
-is `150000`. This loader handles only normal text-token pricing; model-specific
-tool, image, audio, long-context, or regional-processing charges need separate
-support before using those features.
+Rates are the standard, short-context API prices expressed as whole micro-USD
+per one million tokens. For example, `$0.15 / 1M` is `150000`. Do not copy the
+lower Batch API rates into these snapshots because the bot uses standard
+Responses API requests. This loader handles only normal text-token pricing;
+model-specific tool, image, audio, long-context, fast-mode, batch, flex, or
+regional-processing charges need separate support before using those features.
 
 CSV format:
 
