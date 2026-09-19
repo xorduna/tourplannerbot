@@ -2,13 +2,16 @@ package telegram
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"tourplannerbot/internal/llm"
 	applicationModels "tourplannerbot/internal/models"
+	applicationTools "tourplannerbot/internal/tools"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -17,7 +20,7 @@ import (
 
 // responseGenerator produces one text response from conversation context.
 type responseGenerator interface {
-	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message) (llm.Generation, error)
+	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message, toolDefinitions []applicationTools.Definition) (llm.Generation, error)
 }
 
 // authorizationResult describes how the handler should respond to an access check.
@@ -38,12 +41,14 @@ type Handler struct {
 	accessPIN                           string
 	systemInstructions                  string
 	messageHistoryMaxMessages           int
+	toolCallMaxIterations               int
+	toolRegistry                        *applicationTools.Registry
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
 }
 
 // NewHandler creates a message handler with the supplied system instructions and history limit.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, systemInstructions string, messageHistoryMaxMessages int, responseGenerator responseGenerator) *Handler {
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, systemInstructions string, messageHistoryMaxMessages int, toolCallMaxIterations int, toolRegistry *applicationTools.Registry, responseGenerator responseGenerator) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
@@ -51,6 +56,8 @@ func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN stri
 		accessPIN:                        accessPIN,
 		systemInstructions:               systemInstructions,
 		messageHistoryMaxMessages:        messageHistoryMaxMessages,
+		toolCallMaxIterations:            toolCallMaxIterations,
+		toolRegistry:                     toolRegistry,
 		pendingAuthorizationByTelegramID: make(map[int64]struct{}),
 	}
 }
@@ -122,14 +129,7 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			return
 		}
 
-		generation, err := telegramHandler.responseGenerator.Generate(ctx, telegramHandler.systemInstructions, conversationMessages)
-		if loggingError := telegramHandler.saveLLMRequest(ctx, userMessage.ID, chatID, messageThreadID, senderUser.ID, generation, err); loggingError != nil {
-			telegramHandler.logger.Error("failed to save LLM request audit record",
-				"chat_id", chatID,
-				"message_thread_id", messageThreadID,
-				"error", loggingError,
-			)
-		}
+		responseText, err := telegramHandler.generateResponseWithTools(ctx, userMessage.ID, chatID, messageThreadID, senderUser.ID, conversationMessages)
 		if err != nil {
 			telegramHandler.logger.Error("failed to generate LLM response",
 				"chat_id", chatID,
@@ -139,17 +139,131 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar la resposta. Torna-ho a provar.")
 			return
 		}
-		if err := telegramHandler.saveAssistantMessage(ctx, chatID, messageThreadID, generation.Text); err != nil {
-			telegramHandler.logger.Error("failed to save assistant message",
+		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, responseText)
+	}
+}
+
+// generateResponseWithTools runs the bounded LLM/tool loop, persists every tool
+// call and result, and returns the final assistant text.
+func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, sourceMessageID uint64, chatID int64, messageThreadID int, userID int64, conversationMessages []llm.Message) (string, error) {
+	if telegramHandler.toolCallMaxIterations < 1 {
+		return "", fmt.Errorf("tool call iteration limit must be positive")
+	}
+
+	toolDefinitions := telegramHandler.toolRegistry.Definitions()
+	for iteration := 0; iteration < telegramHandler.toolCallMaxIterations; iteration++ {
+		generation, generationError := telegramHandler.responseGenerator.Generate(ctx, telegramHandler.systemInstructions, conversationMessages, toolDefinitions)
+		if loggingError := telegramHandler.saveLLMRequest(ctx, sourceMessageID, chatID, messageThreadID, userID, generation, generationError); loggingError != nil {
+			telegramHandler.logger.Error("failed to save LLM request audit record",
 				"chat_id", chatID,
 				"message_thread_id", messageThreadID,
-				"error", err,
+				"tool_iteration", iteration,
+				"error", loggingError,
 			)
-			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar la resposta. Torna-ho a provar.")
-			return
 		}
-		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, generation.Text)
+		if generationError != nil {
+			return "", generationError
+		}
+
+		if len(generation.ToolCalls) == 0 {
+			if generation.Text == "" {
+				return "", fmt.Errorf("LLM returned neither text nor tool calls")
+			}
+			if err := telegramHandler.saveAssistantMessage(ctx, chatID, messageThreadID, generation.Text); err != nil {
+				return "", fmt.Errorf("save final assistant message: %w", err)
+			}
+			return generation.Text, nil
+		}
+
+		continuationMessages := generation.ContinuationMessages
+		if len(continuationMessages) == 0 {
+			for _, toolCall := range generation.ToolCalls {
+				continuationMessages = append(continuationMessages, llm.Message{
+					Role:          applicationModels.MessageRoleAssistant,
+					ToolCallID:    toolCall.ID,
+					ToolName:      toolCall.Name,
+					ToolArguments: toolCall.Arguments,
+				})
+			}
+		}
+		for _, continuationMessage := range continuationMessages {
+			switch continuationMessage.Role {
+			case applicationModels.MessageRoleReasoning:
+				if err := telegramHandler.saveReasoningMessage(ctx, chatID, messageThreadID, continuationMessage.Content); err != nil {
+					return "", fmt.Errorf("save reasoning continuation: %w", err)
+				}
+			case applicationModels.MessageRoleAssistant:
+				toolCall := llm.ToolCall{
+					ID:        continuationMessage.ToolCallID,
+					Name:      continuationMessage.ToolName,
+					Arguments: continuationMessage.ToolArguments,
+				}
+				if err := telegramHandler.saveAssistantToolCall(ctx, chatID, messageThreadID, toolCall); err != nil {
+					return "", fmt.Errorf("save assistant tool call %q: %w", toolCall.ID, err)
+				}
+			default:
+				return "", fmt.Errorf("unsupported LLM continuation role %q", continuationMessage.Role)
+			}
+			conversationMessages = append(conversationMessages, continuationMessage)
+		}
+
+		for _, toolCall := range generation.ToolCalls {
+			toolExecutionStartedAt := time.Now()
+			telegramHandler.logger.Info(fmt.Sprintf("using tool %s", toolCall.Name),
+				"chat_id", chatID,
+				"message_thread_id", messageThreadID,
+				"tool_iteration", iteration,
+				"tool_name", toolCall.Name,
+				"tool_call_id", toolCall.ID,
+			)
+			toolResult, toolError := telegramHandler.toolRegistry.Execute(ctx, toolCall.Name, json.RawMessage(toolCall.Arguments))
+			toolExecutionDuration := time.Since(toolExecutionStartedAt)
+			if toolError != nil {
+				toolResult = encodeToolError(toolError)
+				telegramHandler.logger.Warn(fmt.Sprintf("tool %s use failed after %s", toolCall.Name, toolExecutionDuration),
+					"chat_id", chatID,
+					"message_thread_id", messageThreadID,
+					"tool_iteration", iteration,
+					"tool_name", toolCall.Name,
+					"tool_call_id", toolCall.ID,
+					"duration_ms", toolExecutionDuration.Milliseconds(),
+					"status", "failed",
+					"error", toolError,
+				)
+			} else {
+				telegramHandler.logger.Info(fmt.Sprintf("tool %s use completed in %s", toolCall.Name, toolExecutionDuration),
+					"chat_id", chatID,
+					"message_thread_id", messageThreadID,
+					"tool_iteration", iteration,
+					"tool_name", toolCall.Name,
+					"tool_call_id", toolCall.ID,
+					"duration_ms", toolExecutionDuration.Milliseconds(),
+					"status", "succeeded",
+					"result_length", len(toolResult),
+				)
+			}
+			if err := telegramHandler.saveToolResult(ctx, chatID, messageThreadID, toolCall, toolResult); err != nil {
+				return "", fmt.Errorf("save result for tool call %q: %w", toolCall.ID, err)
+			}
+			conversationMessages = append(conversationMessages, llm.Message{
+				Role:       applicationModels.MessageRoleTool,
+				Content:    toolResult,
+				ToolCallID: toolCall.ID,
+				ToolName:   toolCall.Name,
+			})
+		}
 	}
+
+	return "", fmt.Errorf("tool call loop exceeded %d iterations", telegramHandler.toolCallMaxIterations)
+}
+
+// encodeToolError returns a stable JSON result that the model can interpret.
+func encodeToolError(toolError error) string {
+	encodedError, err := json.Marshal(map[string]string{"error": toolError.Error()})
+	if err != nil {
+		return `{"error":"tool execution failed"}`
+	}
+	return string(encodedError)
 }
 
 // saveUserMessage persists an authorized user's text in its Telegram conversation.
@@ -216,6 +330,42 @@ func (telegramHandler *Handler) saveAssistantMessage(ctx context.Context, chatID
 	}).Error
 }
 
+// saveAssistantToolCall persists one function call requested by the model.
+func (telegramHandler *Handler) saveAssistantToolCall(ctx context.Context, chatID int64, messageThreadID int, toolCall llm.ToolCall) error {
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		Role:            applicationModels.MessageRoleAssistant,
+		Content:         "",
+		ToolCallID:      stringPointer(toolCall.ID),
+		ToolName:        stringPointer(toolCall.Name),
+		ToolArguments:   stringPointer(toolCall.Arguments),
+	}).Error
+}
+
+// saveReasoningMessage persists encrypted provider state needed to continue a
+// stateless tool-calling response.
+func (telegramHandler *Handler) saveReasoningMessage(ctx context.Context, chatID int64, messageThreadID int, content string) error {
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		Role:            applicationModels.MessageRoleReasoning,
+		Content:         content,
+	}).Error
+}
+
+// saveToolResult persists the output paired with one model tool call.
+func (telegramHandler *Handler) saveToolResult(ctx context.Context, chatID int64, messageThreadID int, toolCall llm.ToolCall, result string) error {
+	return telegramHandler.databaseConnection.WithContext(ctx).Create(&applicationModels.Message{
+		ChatID:          chatID,
+		MessageThreadID: messageThreadID,
+		Role:            applicationModels.MessageRoleTool,
+		Content:         result,
+		ToolCallID:      stringPointer(toolCall.ID),
+		ToolName:        stringPointer(toolCall.Name),
+	}).Error
+}
+
 // loadConversationMessages returns the newest configured messages in chronological order.
 func (telegramHandler *Handler) loadConversationMessages(ctx context.Context, chatID int64, messageThreadID int) ([]llm.Message, error) {
 	if telegramHandler.messageHistoryMaxMessages < 1 {
@@ -236,13 +386,31 @@ func (telegramHandler *Handler) loadConversationMessages(ctx context.Context, ch
 	conversationMessages := make([]llm.Message, 0, len(persistedMessages))
 	for messageIndex := len(persistedMessages) - 1; messageIndex >= 0; messageIndex-- {
 		persistedMessage := persistedMessages[messageIndex]
-		conversationMessages = append(conversationMessages, llm.Message{
+		conversationMessage := llm.Message{
 			Role:    persistedMessage.Role,
 			Content: persistedMessage.Content,
-		})
+		}
+		if persistedMessage.ToolCallID != nil {
+			conversationMessage.ToolCallID = *persistedMessage.ToolCallID
+		}
+		if persistedMessage.ToolName != nil {
+			conversationMessage.ToolName = *persistedMessage.ToolName
+		}
+		if persistedMessage.ToolArguments != nil {
+			conversationMessage.ToolArguments = *persistedMessage.ToolArguments
+		}
+		conversationMessages = append(conversationMessages, conversationMessage)
+	}
+	for len(conversationMessages) > 0 && conversationMessages[0].Role == applicationModels.MessageRoleTool {
+		conversationMessages = conversationMessages[1:]
 	}
 
 	return conversationMessages, nil
+}
+
+// stringPointer returns a pointer suitable for nullable persistence fields.
+func stringPointer(value string) *string {
+	return &value
 }
 
 // authorizeUser checks GORM directly for existing access and handles the temporary PIN prompt state.

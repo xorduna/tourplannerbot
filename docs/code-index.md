@@ -35,6 +35,7 @@ methods:
 depends_on:
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
+  - migrations/00004_add_tool_messages.sql
   - internal/database/database.go
   - internal/models/allowed_user.go
   - internal/models/message.go
@@ -47,13 +48,15 @@ used_by:
 ## llm.md
 
 ```yaml
-title: Conversation-Aware LLM Replies
-description: OpenAI Responses API integration that provides persisted conversation turns as message context.
+title: Conversation-Aware LLM Replies and Tool Calls
+description: OpenAI Responses API integration with persisted conversation turns and a bounded native tool-calling loop.
 methods:
-  - llm.Client.Generate: Sends structured user and assistant conversation messages and returns its text output.
+  - llm.Client.Generate: Sends conversation items and tool definitions and returns text, function calls, and usage metadata.
+  - telegram.Handler.generateResponseWithTools: Executes and persists the bounded LLM/tool loop.
 depends_on:
   - internal/llm/client.go
   - internal/config/config.go
+  - internal/tools/registry.go
 used_by:
   - cmd/bot/main.go
   - internal/telegram/handler.go
@@ -83,4 +86,26 @@ depends_on:
 used_by:
   - docker-compose.yml
   - README.md
+```
+
+## tools.md
+
+```yaml
+title: Tool Architecture
+description: Provider-independent tool registry, native current-time tool, persistence, configuration, and execution loop.
+methods:
+  - tools.Registry.Register: Registers a uniquely named native or MCP-backed tool.
+  - tools.Registry.Definitions: Returns deterministic LLM-facing tool definitions.
+  - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
+  - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - telegram.Handler.generateResponseWithTools: Runs and persists the bounded LLM/tool loop.
+depends_on:
+  - internal/tools/types.go
+  - internal/tools/registry.go
+  - internal/tools/currenttime/current_time.go
+  - internal/telegram/handler.go
+  - migrations/00004_add_tool_messages.sql
+used_by:
+  - cmd/bot/main.go
+  - internal/llm/client.go
 ```

@@ -12,6 +12,8 @@ import (
 	"tourplannerbot/internal/llm"
 	"tourplannerbot/internal/prompt"
 	"tourplannerbot/internal/telegram"
+	applicationTools "tourplannerbot/internal/tools"
+	"tourplannerbot/internal/tools/currenttime"
 
 	"github.com/go-telegram/bot"
 )
@@ -33,6 +35,25 @@ func main() {
 	}))
 
 	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
+
+	toolRegistry := applicationTools.NewRegistry()
+	if applicationConfig.Tools.CurrentTime.Enabled {
+		currentTimeTool, err := currenttime.New(applicationConfig.Tools.CurrentTime.DefaultTimezone)
+		if err != nil {
+			logger.Error("failed to initialize current_time tool", "error", err)
+			os.Exit(1)
+		}
+		if err := toolRegistry.Register(currentTimeTool); err != nil {
+			logger.Error("failed to register current_time tool", "error", err)
+			os.Exit(1)
+		}
+	}
+	registeredToolDefinitions := toolRegistry.Definitions()
+	registeredToolNames := make([]string, 0, len(registeredToolDefinitions))
+	for _, registeredToolDefinition := range registeredToolDefinitions {
+		registeredToolNames = append(registeredToolNames, registeredToolDefinition.Name)
+	}
+	logger.Info("tools initialized", "enabled_tools", registeredToolNames)
 
 	applicationContext, cancelApplicationContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancelApplicationContext()
@@ -69,6 +90,8 @@ func main() {
 		applicationConfig.AccessPIN,
 		systemInstructions,
 		applicationConfig.LLMHistoryMaxMessages,
+		applicationConfig.ToolCallMaxIterations,
+		toolRegistry,
 		llmClient,
 	)
 

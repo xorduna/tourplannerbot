@@ -2,15 +2,18 @@
 
 Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan trips and answer quick queries using OpenAI.
 
-## Features (Slices 1–4 complete)
+## Features
 
 - PIN-based authorization persisted in PostgreSQL
 - Conversation history isolated by Telegram chat and topic
-- Config loaded from environment variables
+- Config loaded from environment variables through Viper
+- Native tool registry and bounded LLM tool-calling loop
+- Persisted tool calls and results
+- `current_time` tool with a configurable default IANA timezone
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 
-Slices 1–4 are complete. The bot stores authorized user messages and generated replies, then sends the newest messages from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
+The bot stores authorized user messages, generated replies, tool calls, and tool results, then sends the newest items from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
 ## Project Structure
 
@@ -22,6 +25,10 @@ internal/
   llm/client.go               # Official OpenAI Go SDK Responses API client
   models/                      # GORM models for authorized users and messages
   telegram/handler.go         # Message routing
+  tools/
+    registry.go               # Shared native/MCP-ready tool registry
+    types.go                  # Provider-independent tool contract
+    currenttime/              # Native current_time tool
 migrations/                   # Goose SQL migrations
 prompts/
   system_trip.md              # System prompt for group/trip chats
@@ -79,6 +86,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `LLM_MAX_TOKENS` | no | `2048` | Max tokens per LLM response |
 | `LLM_HISTORY_MAX_MESSAGES` | no | `20` | Newest messages included from the current chat/topic |
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |
+| `TOOLS_CURRENT_TIME_ENABLED` | no | `true` | Registers the native `current_time` tool |
+| `TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE` | no | `Europe/Madrid` | Default IANA timezone used when a call omits `timezone` |
 | `LOG_LEVEL` | no | `info` | `info` or `debug` |
 
 ## Deployment (DigitalOcean App Platform)

@@ -8,6 +8,7 @@ methods:
 depends_on:
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
+  - migrations/00004_add_tool_messages.sql
   - internal/database/database.go
   - internal/models/allowed_user.go
   - internal/models/message.go
@@ -23,7 +24,7 @@ used_by:
 
 The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the process checks the connection before creating the Telegram bot. Models are stored in `internal/models/`; the Telegram handler uses direct GORM queries for authorization and conversation history. The schema is managed only by Goose migrations, not by GORM auto-migration.
 
-The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group.
+The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group. Migration `00004` adds `tool` and `reasoning` roles plus the call ID, tool name, and JSON arguments needed to reconstruct stateless Responses API function calls, encrypted reasoning state, and outputs.
 
 The `llm_requests` table records each LLM attempt, including failures. It stores provider/model, duration, token usage, an optional immutable cost estimate, and a link to the source user message; it intentionally does not duplicate prompt or response text. Use its timestamp, model, and conversation indexes for consumption reports.
 

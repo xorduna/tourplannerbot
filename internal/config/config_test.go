@@ -43,11 +43,43 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.LLMProvider != "openai" {
 		t.Errorf("LLMProvider = %q, want openai", applicationConfig.LLMProvider)
 	}
+	if !applicationConfig.Tools.CurrentTime.Enabled {
+		t.Error("Tools.CurrentTime.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "Europe/Madrid" {
+		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q, want Europe/Madrid", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
 	if applicationConfig.LLMPricing == nil {
 		t.Fatal("LLMPricing = nil, want pricing from the CSV")
 	}
 	if applicationConfig.LLMPricing.InputMicroUSDPerMillion != 5_000_000 || applicationConfig.LLMPricing.Version != "2026-09-18-openai" {
 		t.Errorf("LLMPricing = %#v", applicationConfig.LLMPricing)
+	}
+}
+
+func TestLoadFromEnvironmentLoadsCurrentTimeOverrides(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_CURRENT_TIME_ENABLED", "false")
+	t.Setenv("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE", "America/New_York")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Tools.CurrentTime.Enabled {
+		t.Error("Tools.CurrentTime.Enabled = true, want false")
+	}
+	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "America/New_York" {
+		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
+}
+
+func TestLoadFromEnvironmentRejectsInvalidCurrentTimeTimezone(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE", "Mars/Olympus")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for an invalid timezone")
 	}
 }
 
