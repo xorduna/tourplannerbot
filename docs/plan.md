@@ -55,14 +55,11 @@ internal/
   models/
     allowed_user.go      # GORM model for the PIN user whitelist
   llm/
-    client.go            # OpenAI-compatible client
-    types.go             # Message, Tool, ToolCall, Response
+    client.go            # OpenAI-compatible client and response types
   tools/
     registry.go          # Register/lookup/execute tools
-    types.go             # Tool + ToolHandler interfaces
-    monuments.go         # Tool: monument info/availability
-    restaurants.go       # Tool: find restaurants
-    weather.go           # Tool: weather forecast
+    types.go             # Shared native/MCP tool contract
+    currenttime/         # Native current_time tool
   trip/
     service.go           # Trip lifecycle (create, load, update summary)
     repository.go        # Postgres queries for trips
@@ -105,10 +102,11 @@ CREATE TABLE messages (
     id          SERIAL PRIMARY KEY,
     chat_id     BIGINT NOT NULL,
     user_id     BIGINT,                   -- Telegram user ID (who sent it)
-    role        TEXT NOT NULL,             -- user, assistant, tool
+    role        TEXT NOT NULL,             -- user, assistant, tool, reasoning
     content     TEXT NOT NULL,
-    tool_calls  JSONB,
+    tool_call_id TEXT,
     tool_name   TEXT,
+    tool_arguments JSONB,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -118,50 +116,36 @@ CREATE INDEX idx_messages_chat_id ON messages(chat_id, created_at);
 ## Core Interfaces
 
 ```go
-// internal/llm/types.go
+// internal/llm/client.go
 
 type Message struct {
-    Role       string     `json:"role"`
-    Content    string     `json:"content"`
-    ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-    ToolCallID string     `json:"tool_call_id,omitempty"`
-    Name       string     `json:"name,omitempty"`
+	Role          string
+	Content       string
+	ToolCallID    string
+	ToolName      string
+	ToolArguments string
 }
 
 type ToolCall struct {
-    ID       string `json:"id"`
-    Type     string `json:"type"`
-    Function struct {
-        Name      string `json:"name"`
-        Arguments string `json:"arguments"`
-    } `json:"function"`
-}
-
-type Response struct {
-    Content   string
-    ToolCalls []ToolCall
-}
-
-type Client interface {
-    Chat(ctx context.Context, messages []Message, tools []Tool) (*Response, error)
+	ID        string
+	Name      string
+	Arguments string
 }
 ```
 
 ```go
 // internal/tools/types.go
 
-type Tool struct {
-    Name        string          `json:"name"`
-    Description string          `json:"description"`
-    Parameters  json.RawMessage `json:"parameters"` // JSON Schema
+type Definition struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+	Strict      bool
 }
 
-type ToolHandler func(ctx context.Context, args json.RawMessage) (string, error)
-
-type Registry interface {
-    Register(tool Tool, handler ToolHandler)
-    List() []Tool
-    Execute(ctx context.Context, name string, args json.RawMessage) (string, error)
+type Tool interface {
+	Definition() Definition
+	Execute(ctx context.Context, arguments json.RawMessage) (string, error)
 }
 ```
 
@@ -169,19 +153,21 @@ type Registry interface {
 
 ```
 messages = load_history(chat_id) + new_user_message
-tools = registry.List()
+tools = registry.Definitions()
 
 for i := 0; i < MAX_ITERATIONS; i++ {
-    response = llm.Chat(messages, tools)
+    response = llm.Generate(messages, tools)
 
     if len(response.ToolCalls) == 0 {
-        return response.Content
+        persist response.Text
+        return response.Text
     }
 
-    append assistant message with tool_calls
+    persist encrypted reasoning and assistant tool calls
     for each tool_call:
         result = registry.Execute(tool_call.name, tool_call.args)
-        append tool result message
+        persist tool result
+        append tool result to messages
 }
 
 return "Sorry, I couldn't complete the request"
@@ -318,12 +304,14 @@ Each one is a single task for Claude Code / Copilot.
 - Auto-generate/update trip summary after each group conversation
 - **Done when**: Bot behaves differently in group vs private chat, trip record exists in DB
 
-### Slice 6 — Tool Calling (first tool)
-- Tool registry implementation
-- Tool calling loop (LLM → tool → LLM → response)
-- One stub tool: `get_monument_info` (hardcoded BCN data)
-- Save tool calls and results in message history
-- **Done when**: Ask "what time does Park Güell close?" and the bot calls the tool and answers
+### Slice 6 — Tool Calling (first tool) ✅ Complete
+- Provider-independent tool registry
+- Tool calling loop (LLM → tool → LLM → response), bounded by configuration
+- Native `current_time` tool with an optional IANA timezone
+- Persist tool calls and results in message history
+- Viper configuration, including per-tool enablement
+- Show live typing and update one Telegram progress message across thinking, tool use, and final delivery
+- **Completed**: The model can request the current time, receive the native tool result, and produce a final answer from persisted conversation items while the user sees live progress.
 
 ### Slice 7 — Editable Prompts
 - Load system prompts and skills from `prompts/` filesystem
@@ -332,7 +320,15 @@ Each one is a single task for Claude Code / Copilot.
 - Write initial skill files with BCN knowledge
 - **Done when**: Edit a .md file, restart bot, behavior changes
 
-### Slice 8+ — More Tools (one per slice)
+### Slice 8 — MCP Wikipedia and OpenStreetMap ✅ Complete
+- Load configured MCP servers at startup over Streamable HTTP
+- Per-server enablement overrides the `TOOLS_MCPS` list
+- Support unauthenticated and bearer-token connections
+- Disable only the MCP that fails initialization
+- Register discovered Wikipedia and OpenStreetMap tools without renaming them
+- **Completed**: Both local containers are discovered through the official Go MCP SDK, registered atomically, and exposed to the existing persisted tool loop.
+
+### Slice 9+ — More Tools (one per slice)
 - Each tool is independent: implement handler, register, done
 - Candidates: `find_restaurants`, `get_weather`, `check_availability`
 - Connect to real APIs as needed (separate Python scraper service, Google Places, etc.)

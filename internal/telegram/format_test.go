@@ -28,3 +28,42 @@ func TestFormatTelegramHTMLFormatsFencedCode(t *testing.T) {
 		t.Errorf("formatTelegramHTML() = %q, want %q", got, want)
 	}
 }
+
+// TestFormatTelegramRichHTMLFormatsMarkdownTable verifies valid Markdown tables
+// become sanitized native Telegram tables.
+func TestFormatTelegramRichHTMLFormatsMarkdownTable(t *testing.T) {
+	markdown := "Restaurants\n\n| Restaurant | Distància | Tipus |\n|---|---:|---|\n| **Lactuca** | 77 m | espanyola |\n| Pötstot | 133 m | vegana & saludable |"
+	want := "Restaurants\n\n<table bordered striped compact><tr><th>Restaurant</th><th>Distància</th><th>Tipus</th></tr><tr><td><b>Lactuca</b></td><td>77 m</td><td>espanyola</td></tr><tr><td>Pötstot</td><td>133 m</td><td>vegana &amp; saludable</td></tr></table>"
+
+	got, hasTables := formatTelegramRichHTML(markdown)
+	if !hasTables {
+		t.Fatal("formatTelegramRichHTML did not detect the Markdown table")
+	}
+	if got != want {
+		t.Errorf("formatTelegramRichHTML() = %q, want %q", got, want)
+	}
+}
+
+// TestFormatTelegramHTMLUsesReadableTableFallback verifies regular messages do
+// not expose raw Markdown pipes when Rich Messages are unavailable.
+func TestFormatTelegramHTMLUsesReadableTableFallback(t *testing.T) {
+	markdown := "| Restaurant | Distància | Tipus |\n|---|---:|---|\n| **Lactuca** | 77 m | espanyola |"
+	want := "• <b>Lactuca</b>\n  <b>Distància:</b> 77 m\n  <b>Tipus:</b> espanyola"
+
+	if got := formatTelegramHTML(markdown); got != want {
+		t.Errorf("formatTelegramHTML() = %q, want %q", got, want)
+	}
+}
+
+// TestFormatTelegramRichHTMLIgnoresPipesOutsideTables verifies ordinary pipe
+// characters are not mistaken for table syntax.
+func TestFormatTelegramRichHTMLIgnoresPipesOutsideTables(t *testing.T) {
+	markdown := "A | B is ordinary text"
+	got, hasTables := formatTelegramRichHTML(markdown)
+	if hasTables {
+		t.Fatal("formatTelegramRichHTML detected a table without a delimiter row")
+	}
+	if got != markdown {
+		t.Errorf("formatTelegramRichHTML() = %q, want %q", got, markdown)
+	}
+}

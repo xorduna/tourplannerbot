@@ -2,13 +2,52 @@ package config
 
 import (
 	"fmt"
-	"os"
+	"net/url"
+	"regexp"
 	"strconv"
+	"strings"
+	"time"
+	_ "time/tzdata"
 
 	"tourplannerbot/internal/llm"
+
+	"github.com/spf13/viper"
 )
 
-// Config holds all configuration values loaded from environment variables.
+const (
+	defaultCurrentTimeTimezone = "Europe/Madrid"
+	defaultMCPTimeout          = 30 * time.Second
+)
+
+var (
+	supportedMCPServerNames = []string{"wikipedia", "openstreetmap"}
+	mcpServerNamePattern    = regexp.MustCompile(`^[a-z0-9_]+$`)
+)
+
+// CurrentTimeToolConfig contains configuration for the native current-time tool.
+type CurrentTimeToolConfig struct {
+	Enabled         bool
+	DefaultTimezone string
+}
+
+// MCPServerConfig contains the connection and authentication settings for one
+// Streamable HTTP MCP server.
+type MCPServerConfig struct {
+	Name        string
+	Enabled     bool
+	URL         string
+	AuthType    string
+	Token       string
+	CallTimeout time.Duration
+}
+
+// ToolsConfig contains configuration shared by the application's tools.
+type ToolsConfig struct {
+	CurrentTime CurrentTimeToolConfig
+	MCPServers  []MCPServerConfig
+}
+
+// Config holds all application configuration values.
 type Config struct {
 	TelegramBotToken      string
 	DatabaseURL           string
@@ -21,88 +60,78 @@ type Config struct {
 	LLMPricing            *llm.Pricing
 	LLMHistoryMaxMessages int
 	ToolCallMaxIterations int
+	Tools                 ToolsConfig
 	AccessPIN             string
 	LogLevel              string
 }
 
-// LoadFromEnvironment reads all required configuration from environment variables
-// and returns a populated Config struct or an error if required values are missing.
+// LoadFromEnvironment reads application configuration through Viper. Environment
+// variables use uppercase names with underscores, such as OPENAI_API_KEY and
+// TOOLS_CURRENT_TIME_ENABLED.
 func LoadFromEnvironment() (*Config, error) {
-	telegramBotToken := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if telegramBotToken == "" {
-		return nil, fmt.Errorf("TELEGRAM_BOT_TOKEN environment variable is required")
-	}
+	configuration := viper.New()
+	configuration.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	configuration.AutomaticEnv()
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL environment variable is required")
-	}
+	configuration.SetDefault("openai.model", "gpt-5.5")
+	configuration.SetDefault("openai.base_url", "https://api.openai.com/v1")
+	configuration.SetDefault("llm.provider", "openai")
+	configuration.SetDefault("llm.tariffs_dir", "tariffs")
+	configuration.SetDefault("llm.max_tokens", 2048)
+	configuration.SetDefault("llm.history_max_messages", 20)
+	configuration.SetDefault("tool_call_max_iterations", 10)
+	configuration.SetDefault("tools.current_time.enabled", true)
+	configuration.SetDefault("tools.current_time.default_timezone", defaultCurrentTimeTimezone)
+	configuration.SetDefault("log_level", "info")
 
-	openAIAPIKey := os.Getenv("OPENAI_API_KEY")
-	if openAIAPIKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is required")
+	telegramBotToken, err := requiredString(configuration, "telegram_bot_token")
+	if err != nil {
+		return nil, err
 	}
-
-	accessPIN := os.Getenv("ACCESS_PIN")
-	if accessPIN == "" {
-		return nil, fmt.Errorf("ACCESS_PIN environment variable is required")
+	databaseURL, err := requiredString(configuration, "database_url")
+	if err != nil {
+		return nil, err
 	}
-
-	openAIModel := os.Getenv("OPENAI_MODEL")
-	if openAIModel == "" {
-		openAIModel = "gpt-5.5"
+	openAIAPIKey, err := requiredString(configuration, "openai_api_key")
+	if err != nil {
+		return nil, err
 	}
-
-	openAIBaseURL := os.Getenv("OPENAI_BASE_URL")
-	if openAIBaseURL == "" {
-		openAIBaseURL = "https://api.openai.com/v1"
-	}
-
-	llmProvider := os.Getenv("LLM_PROVIDER")
-	if llmProvider == "" {
-		llmProvider = "openai"
-	}
-
-	llmTariffsDirectory := os.Getenv("LLM_TARIFFS_DIR")
-	if llmTariffsDirectory == "" {
-		llmTariffsDirectory = "tariffs"
-	}
-
-	llmPricing, err := llm.LoadPricing(llmTariffsDirectory, llmProvider, openAIModel)
+	accessPIN, err := requiredString(configuration, "access_pin")
 	if err != nil {
 		return nil, err
 	}
 
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
+	llmMaxTokens, err := positiveInteger(configuration, "llm.max_tokens", "LLM_MAX_TOKENS")
+	if err != nil {
+		return nil, err
+	}
+	llmHistoryMaxMessages, err := positiveInteger(configuration, "llm.history_max_messages", "LLM_HISTORY_MAX_MESSAGES")
+	if err != nil {
+		return nil, err
+	}
+	toolCallMaxIterations, err := positiveInteger(configuration, "tool_call_max_iterations", "TOOL_CALL_MAX_ITERATIONS")
+	if err != nil {
+		return nil, err
+	}
+	currentTimeEnabled, err := booleanValue(configuration, "tools.current_time.enabled", "TOOLS_CURRENT_TIME_ENABLED")
+	if err != nil {
+		return nil, err
+	}
+	currentTimeDefaultTimezone := strings.TrimSpace(configuration.GetString("tools.current_time.default_timezone"))
+	if _, err := time.LoadLocation(currentTimeDefaultTimezone); err != nil {
+		return nil, fmt.Errorf("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE must be a valid IANA timezone, got %q: %w", currentTimeDefaultTimezone, err)
+	}
+	mcpServers, err := loadMCPServerConfigurations(configuration)
+	if err != nil {
+		return nil, err
 	}
 
-	llmMaxTokens := 2048
-	if rawValue := os.Getenv("LLM_MAX_TOKENS"); rawValue != "" {
-		parsedValue, err := strconv.Atoi(rawValue)
-		if err != nil {
-			return nil, fmt.Errorf("LLM_MAX_TOKENS must be an integer, got: %s", rawValue)
-		}
-		llmMaxTokens = parsedValue
-	}
-
-	llmHistoryMaxMessages := 20
-	if rawValue := os.Getenv("LLM_HISTORY_MAX_MESSAGES"); rawValue != "" {
-		parsedValue, err := strconv.Atoi(rawValue)
-		if err != nil || parsedValue < 1 {
-			return nil, fmt.Errorf("LLM_HISTORY_MAX_MESSAGES must be a positive integer, got: %s", rawValue)
-		}
-		llmHistoryMaxMessages = parsedValue
-	}
-
-	toolCallMaxIterations := 10
-	if rawValue := os.Getenv("TOOL_CALL_MAX_ITERATIONS"); rawValue != "" {
-		parsedValue, err := strconv.Atoi(rawValue)
-		if err != nil {
-			return nil, fmt.Errorf("TOOL_CALL_MAX_ITERATIONS must be an integer, got: %s", rawValue)
-		}
-		toolCallMaxIterations = parsedValue
+	openAIModel := configuration.GetString("openai.model")
+	llmProvider := configuration.GetString("llm.provider")
+	llmTariffsDirectory := configuration.GetString("llm.tariffs_dir")
+	llmPricing, err := llm.LoadPricing(llmTariffsDirectory, llmProvider, openAIModel)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Config{
@@ -110,14 +139,157 @@ func LoadFromEnvironment() (*Config, error) {
 		DatabaseURL:           databaseURL,
 		OpenAIAPIKey:          openAIAPIKey,
 		OpenAIModel:           openAIModel,
-		OpenAIBaseURL:         openAIBaseURL,
+		OpenAIBaseURL:         configuration.GetString("openai.base_url"),
 		LLMProvider:           llmProvider,
 		LLMTariffsDirectory:   llmTariffsDirectory,
 		LLMMaxTokens:          llmMaxTokens,
 		LLMPricing:            llmPricing,
 		LLMHistoryMaxMessages: llmHistoryMaxMessages,
 		ToolCallMaxIterations: toolCallMaxIterations,
-		AccessPIN:             accessPIN,
-		LogLevel:              logLevel,
+		Tools: ToolsConfig{
+			CurrentTime: CurrentTimeToolConfig{
+				Enabled:         currentTimeEnabled,
+				DefaultTimezone: currentTimeDefaultTimezone,
+			},
+			MCPServers: mcpServers,
+		},
+		AccessPIN: accessPIN,
+		LogLevel:  configuration.GetString("log_level"),
 	}, nil
+}
+
+// loadMCPServerConfigurations loads the dynamic TOOLS_MCPS list and applies
+// each server's optional TOOLS_<NAME>_ENABLED override. Known servers are also
+// considered when absent from the list so an explicit true value can enable
+// them.
+func loadMCPServerConfigurations(configuration *viper.Viper) ([]MCPServerConfig, error) {
+	listedServerNames, err := parseMCPServerNames(configuration.GetString("tools.mcps"))
+	if err != nil {
+		return nil, err
+	}
+
+	listedServers := make(map[string]bool, len(listedServerNames))
+	candidateServerNames := make([]string, 0, len(listedServerNames)+len(supportedMCPServerNames))
+	seenCandidates := make(map[string]bool, len(listedServerNames)+len(supportedMCPServerNames))
+	for _, serverName := range listedServerNames {
+		listedServers[serverName] = true
+		candidateServerNames = append(candidateServerNames, serverName)
+		seenCandidates[serverName] = true
+	}
+	for _, serverName := range supportedMCPServerNames {
+		if !seenCandidates[serverName] {
+			candidateServerNames = append(candidateServerNames, serverName)
+		}
+	}
+
+	serverConfigurations := make([]MCPServerConfig, 0, len(candidateServerNames))
+	for _, serverName := range candidateServerNames {
+		configurationPrefix := "tools." + serverName
+		enabled := listedServers[serverName]
+		enabledKey := configurationPrefix + ".enabled"
+		if configuration.IsSet(enabledKey) {
+			environmentVariableName := "TOOLS_" + strings.ToUpper(serverName) + "_ENABLED"
+			enabled, err = booleanValue(configuration, enabledKey, environmentVariableName)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		serverConfiguration := MCPServerConfig{
+			Name:        serverName,
+			Enabled:     enabled,
+			URL:         strings.TrimSpace(configuration.GetString(configurationPrefix + ".url")),
+			AuthType:    strings.ToLower(strings.TrimSpace(configuration.GetString(configurationPrefix + ".auth_type"))),
+			Token:       strings.TrimSpace(configuration.GetString(configurationPrefix + ".token")),
+			CallTimeout: defaultMCPTimeout,
+		}
+		if serverConfiguration.AuthType == "" {
+			serverConfiguration.AuthType = "none"
+		}
+		if configuredTimeout := strings.TrimSpace(configuration.GetString(configurationPrefix + ".timeout")); configuredTimeout != "" {
+			serverConfiguration.CallTimeout, err = time.ParseDuration(configuredTimeout)
+			if err != nil || serverConfiguration.CallTimeout <= 0 {
+				return nil, fmt.Errorf("TOOLS_%s_TIMEOUT must be a positive duration, got: %s", strings.ToUpper(serverName), configuredTimeout)
+			}
+		}
+		if err := validateMCPServerConfiguration(serverConfiguration); err != nil {
+			return nil, err
+		}
+		serverConfigurations = append(serverConfigurations, serverConfiguration)
+	}
+	return serverConfigurations, nil
+}
+
+// parseMCPServerNames normalizes and de-duplicates the comma-separated MCP
+// server list while preserving its configured order.
+func parseMCPServerNames(rawServerNames string) ([]string, error) {
+	serverNames := make([]string, 0)
+	seenServerNames := make(map[string]bool)
+	for _, rawServerName := range strings.Split(rawServerNames, ",") {
+		serverName := strings.ToLower(strings.TrimSpace(rawServerName))
+		if serverName == "" {
+			continue
+		}
+		if !mcpServerNamePattern.MatchString(serverName) {
+			return nil, fmt.Errorf("TOOLS_MCPS contains invalid server name %q; use lowercase letters, digits, and underscores", serverName)
+		}
+		if !seenServerNames[serverName] {
+			serverNames = append(serverNames, serverName)
+			seenServerNames[serverName] = true
+		}
+	}
+	return serverNames, nil
+}
+
+// validateMCPServerConfiguration validates settings that are required only
+// when a server is enabled.
+func validateMCPServerConfiguration(serverConfiguration MCPServerConfig) error {
+	if !serverConfiguration.Enabled {
+		return nil
+	}
+	environmentVariablePrefix := "TOOLS_" + strings.ToUpper(serverConfiguration.Name)
+	if serverConfiguration.URL == "" {
+		return fmt.Errorf("%s_URL is required when the MCP server is enabled", environmentVariablePrefix)
+	}
+	parsedURL, err := url.ParseRequestURI(serverConfiguration.URL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return fmt.Errorf("%s_URL must be an absolute HTTP or HTTPS URL, got: %s", environmentVariablePrefix, serverConfiguration.URL)
+	}
+	if serverConfiguration.AuthType != "none" && serverConfiguration.AuthType != "bearer" {
+		return fmt.Errorf("%s_AUTH_TYPE must be none or bearer, got: %s", environmentVariablePrefix, serverConfiguration.AuthType)
+	}
+	if serverConfiguration.AuthType == "bearer" && serverConfiguration.Token == "" {
+		return fmt.Errorf("%s_TOKEN is required when %s_AUTH_TYPE=bearer", environmentVariablePrefix, environmentVariablePrefix)
+	}
+	return nil
+}
+
+// requiredString returns a non-empty required configuration value.
+func requiredString(configuration *viper.Viper, key string) (string, error) {
+	value := strings.TrimSpace(configuration.GetString(key))
+	if value == "" {
+		return "", fmt.Errorf("%s environment variable is required", strings.ToUpper(strings.ReplaceAll(key, ".", "_")))
+	}
+	return value, nil
+}
+
+// positiveInteger parses and validates a positive integer configuration value.
+func positiveInteger(configuration *viper.Viper, key string, environmentVariableName string) (int, error) {
+	rawValue := configuration.GetString(key)
+	parsedValue, err := strconv.Atoi(rawValue)
+	if err != nil || parsedValue < 1 {
+		return 0, fmt.Errorf("%s must be a positive integer, got: %s", environmentVariableName, rawValue)
+	}
+	return parsedValue, nil
+}
+
+// booleanValue parses a boolean configuration value without silently accepting
+// invalid strings.
+func booleanValue(configuration *viper.Viper, key string, environmentVariableName string) (bool, error) {
+	rawValue := configuration.GetString(key)
+	parsedValue, err := strconv.ParseBool(rawValue)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean, got: %s", environmentVariableName, rawValue)
+	}
+	return parsedValue, nil
 }

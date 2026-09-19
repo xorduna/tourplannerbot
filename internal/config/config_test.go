@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func setRequiredEnvironment(t *testing.T) {
@@ -43,11 +44,116 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.LLMProvider != "openai" {
 		t.Errorf("LLMProvider = %q, want openai", applicationConfig.LLMProvider)
 	}
+	if !applicationConfig.Tools.CurrentTime.Enabled {
+		t.Error("Tools.CurrentTime.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "Europe/Madrid" {
+		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q, want Europe/Madrid", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
 	if applicationConfig.LLMPricing == nil {
 		t.Fatal("LLMPricing = nil, want pricing from the CSV")
 	}
 	if applicationConfig.LLMPricing.InputMicroUSDPerMillion != 5_000_000 || applicationConfig.LLMPricing.Version != "2026-09-18-openai" {
 		t.Errorf("LLMPricing = %#v", applicationConfig.LLMPricing)
+	}
+}
+
+func TestLoadFromEnvironmentLoadsCurrentTimeOverrides(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_CURRENT_TIME_ENABLED", "false")
+	t.Setenv("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE", "America/New_York")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Tools.CurrentTime.Enabled {
+		t.Error("Tools.CurrentTime.Enabled = true, want false")
+	}
+	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "America/New_York" {
+		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
+}
+
+// TestLoadFromEnvironmentLoadsMCPServers verifies list membership enables MCP
+// servers and their connection settings are parsed dynamically.
+func TestLoadFromEnvironmentLoadsMCPServers(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_MCPS", "wikipedia, openstreetmap, wikipedia")
+	t.Setenv("TOOLS_WIKIPEDIA_URL", "http://127.0.0.1:8088/mcp")
+	t.Setenv("TOOLS_WIKIPEDIA_TIMEOUT", "12s")
+	t.Setenv("TOOLS_OPENSTREETMAP_URL", "http://127.0.0.1:3010/mcp")
+	t.Setenv("TOOLS_OPENSTREETMAP_AUTH_TYPE", "bearer")
+	t.Setenv("TOOLS_OPENSTREETMAP_TOKEN", "internal-token")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if len(applicationConfig.Tools.MCPServers) != 2 {
+		t.Fatalf("len(Tools.MCPServers) = %d, want 2", len(applicationConfig.Tools.MCPServers))
+	}
+	wikipediaConfiguration := applicationConfig.Tools.MCPServers[0]
+	if wikipediaConfiguration.Name != "wikipedia" || !wikipediaConfiguration.Enabled || wikipediaConfiguration.URL != "http://127.0.0.1:8088/mcp" || wikipediaConfiguration.CallTimeout != 12*time.Second {
+		t.Errorf("Wikipedia configuration = %#v", wikipediaConfiguration)
+	}
+	openStreetMapConfiguration := applicationConfig.Tools.MCPServers[1]
+	if openStreetMapConfiguration.Name != "openstreetmap" || !openStreetMapConfiguration.Enabled || openStreetMapConfiguration.AuthType != "bearer" || openStreetMapConfiguration.Token != "internal-token" {
+		t.Errorf("OpenStreetMap configuration = %#v", openStreetMapConfiguration)
+	}
+}
+
+// TestLoadFromEnvironmentAppliesMCPEnabledOverrides verifies an explicit false
+// disables a listed server and an explicit true enables a known unlisted one.
+func TestLoadFromEnvironmentAppliesMCPEnabledOverrides(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_MCPS", "wikipedia")
+	t.Setenv("TOOLS_WIKIPEDIA_ENABLED", "false")
+	t.Setenv("TOOLS_OPENSTREETMAP_ENABLED", "true")
+	t.Setenv("TOOLS_OPENSTREETMAP_URL", "http://127.0.0.1:3010/mcp")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Tools.MCPServers[0].Enabled {
+		t.Error("listed Wikipedia server remained enabled after explicit false override")
+	}
+	if !applicationConfig.Tools.MCPServers[1].Enabled {
+		t.Error("unlisted OpenStreetMap server remained disabled after explicit true override")
+	}
+}
+
+// TestLoadFromEnvironmentRejectsEnabledMCPWithoutURL verifies enabled servers
+// cannot reach startup with an incomplete endpoint configuration.
+func TestLoadFromEnvironmentRejectsEnabledMCPWithoutURL(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_MCPS", "wikipedia")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for an enabled MCP server without a URL")
+	}
+}
+
+// TestLoadFromEnvironmentRequiresBearerToken verifies bearer authentication is
+// rejected when no token is configured.
+func TestLoadFromEnvironmentRequiresBearerToken(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_MCPS", "wikipedia")
+	t.Setenv("TOOLS_WIKIPEDIA_URL", "http://127.0.0.1:8088/mcp")
+	t.Setenv("TOOLS_WIKIPEDIA_AUTH_TYPE", "bearer")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for bearer authentication without a token")
+	}
+}
+
+func TestLoadFromEnvironmentRejectsInvalidCurrentTimeTimezone(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE", "Mars/Olympus")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for an invalid timezone")
 	}
 }
 
