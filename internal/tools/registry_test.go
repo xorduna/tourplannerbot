@@ -11,7 +11,7 @@ type testTool struct {
 }
 
 func (tool testTool) Definition() Definition {
-	return Definition{Name: tool.name, Parameters: map[string]any{"type": "object"}}
+	return Definition{Name: tool.name, Parameters: map[string]any{"type": "object"}, Source: "test-source"}
 }
 
 func (tool testTool) Execute(_ context.Context, _ json.RawMessage) (string, error) {
@@ -26,6 +26,40 @@ func TestRegistryRejectsDuplicateNames(t *testing.T) {
 	}
 	if err := registry.Register(testTool{name: "current_time"}); err == nil {
 		t.Fatal("duplicate Register returned nil error")
+	}
+}
+
+// TestRegistrySourceReturnsInternalMetadata verifies that callers can identify
+// a tool provider without exposing that metadata to the LLM tool contract.
+func TestRegistrySourceReturnsInternalMetadata(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(testTool{name: "search_places"}); err != nil {
+		t.Fatalf("Register returned an error: %v", err)
+	}
+	if actualSource := registry.Source("search_places"); actualSource != "test-source" {
+		t.Fatalf("Source returned %q, want %q", actualSource, "test-source")
+	}
+	if actualSource := registry.Source("missing"); actualSource != "" {
+		t.Fatalf("Source for missing tool returned %q, want empty", actualSource)
+	}
+}
+
+// TestRegistryRegisterAllIsAtomic verifies a batch conflict does not leave
+// earlier tools from that same batch registered.
+func TestRegistryRegisterAllIsAtomic(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(testTool{name: "current_time"}); err != nil {
+		t.Fatalf("Register returned an error: %v", err)
+	}
+	registrationError := registry.RegisterAll([]Tool{
+		testTool{name: "wikipedia_search"},
+		testTool{name: "current_time"},
+	})
+	if registrationError == nil {
+		t.Fatal("RegisterAll returned nil error for a conflicting batch")
+	}
+	if len(registry.Definitions()) != 1 {
+		t.Errorf("len(Definitions) = %d, want 1 after rejected batch", len(registry.Definitions()))
 	}
 }
 

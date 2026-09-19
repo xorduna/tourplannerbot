@@ -155,7 +155,11 @@ func (client *Client) Generate(ctx context.Context, instructions string, convers
 
 	responseTools := make([]responses.ToolUnionParam, 0, len(toolDefinitions))
 	for _, toolDefinition := range toolDefinitions {
-		responseTool := responses.ToolParamOfFunction(toolDefinition.Name, toolDefinition.Parameters, toolDefinition.Strict)
+		normalizedParameters, normalizationError := normalizeFunctionParameters(toolDefinition.Parameters)
+		if normalizationError != nil {
+			return generation, fmt.Errorf("normalize parameters for tool %q: %w", toolDefinition.Name, normalizationError)
+		}
+		responseTool := responses.ToolParamOfFunction(toolDefinition.Name, normalizedParameters, toolDefinition.Strict)
 		responseTool.OfFunction.Description = openai.String(toolDefinition.Description)
 		responseTools = append(responseTools, responseTool)
 	}

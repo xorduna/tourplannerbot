@@ -1,12 +1,19 @@
 ---
 title: Conversation-Aware LLM Replies and Tool Calls
-description: OpenAI Responses API integration with persisted conversation turns and a bounded native tool-calling loop.
+description: OpenAI Responses API integration, persisted tool loops, live Telegram progress, and safe rich response formatting.
 methods:
   - llm.Client.Generate: Sends conversation items and tool definitions and returns text, function calls, and usage metadata.
+  - llm.normalizeFunctionParameters: Clones and adapts function schemas to OpenAI's accepted top-level object shape.
   - telegram.Handler.generateResponseWithTools: Executes and persists the bounded LLM/tool loop.
+  - telegram.newTelegramResponseProgress: Starts the editable thinking message and typing indicator.
+  - telegram.telegramResponseProgress.finish: Replaces progress with the final normal or rich response.
+  - telegram.formatTelegramRichHTML: Converts safe Markdown tables to native Telegram Rich HTML tables.
+  - telegram.formatTelegramHTML: Converts Markdown to regular Telegram HTML with readable table fallbacks.
 depends_on:
   - internal/llm/client.go
+  - internal/llm/schema.go
   - internal/config/config.go
+  - internal/telegram/progress.go
   - internal/tools/registry.go
 used_by:
   - cmd/bot/main.go
@@ -21,7 +28,15 @@ The request uses `store: false` and does not pass a previous response identifier
 
 When the model requests a function, the handler persists the assistant tool call, executes it through the provider-independent registry, persists its result, and sends the expanded conversation back to the model. This repeats until the model returns final text or reaches `TOOL_CALL_MAX_ITERATIONS`. Tool execution errors are returned to the model as JSON so it can recover or explain the failure.
 
-Before sending a model response, the bot converts common Markdown to Telegram HTML: headings become bold, and bold, italic, code, links, lists, quote markers, and horizontal rules are rendered safely. Other text is HTML-escaped.
+Before an OpenAI request, the client clones every provider-independent tool schema and makes only the copy compatible with OpenAI function parameters. The root remains an object; top-level `oneOf`, `anyOf`, and `allOf` branches are flattened while preserving their properties and compatible requirements, and unsupported root constraints are removed. The registry retains the original schema for other providers, while the MCP server still performs exact argument validation at execution time.
+
+For an authorized text request, the bot immediately posts `💭 Pensant…` and refreshes Telegram's typing action while work continues. A tool call edits that same message with a short Catalan activity description such as `🔎 Utilitzant Wikipedia per buscar informació…`; after the tool completes it becomes `✍️ Preparant la resposta…`. Tool arguments are never copied into these updates. The final answer replaces the same message, avoiding a trail of temporary status messages.
+
+Progress delivery is best-effort and does not interrupt model or tool execution. If the initial placeholder cannot be sent, the final answer is sent normally. If the placeholder cannot be edited, the bot sends the final answer as a new message and then removes the stale placeholder only after successful delivery. The typing goroutine is always stopped before final delivery.
+
+Before sending a model response, the bot converts common Markdown to Telegram-safe HTML: headings become bold, and bold, italic, code, links, lists, quote markers, and horizontal rules are rendered safely. Other text is HTML-escaped.
+
+When a response contains a valid GitHub-style Markdown table, the bot edits the progress message into a Telegram Rich Message with a native bordered, striped, compact table. Cell contents are passed through the same safe inline formatter, so model-provided raw HTML cannot introduce Telegram elements. If a Rich Message send or edit fails, the bot retries as a regular HTML message in which every row becomes a labeled, mobile-friendly card instead of exposing Markdown pipe syntax.
 
 ## Configuration
 

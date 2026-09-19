@@ -49,13 +49,20 @@ used_by:
 
 ```yaml
 title: Conversation-Aware LLM Replies and Tool Calls
-description: OpenAI Responses API integration with persisted conversation turns and a bounded native tool-calling loop.
+description: OpenAI Responses API integration, persisted tool loops, live Telegram progress, and safe rich response formatting.
 methods:
   - llm.Client.Generate: Sends conversation items and tool definitions and returns text, function calls, and usage metadata.
+  - llm.normalizeFunctionParameters: Clones and adapts function schemas to OpenAI's accepted top-level object shape.
   - telegram.Handler.generateResponseWithTools: Executes and persists the bounded LLM/tool loop.
+  - telegram.newTelegramResponseProgress: Starts the editable thinking message and typing indicator.
+  - telegram.telegramResponseProgress.finish: Replaces progress with the final normal or rich response.
+  - telegram.formatTelegramRichHTML: Converts safe Markdown tables to native Telegram Rich HTML tables.
+  - telegram.formatTelegramHTML: Converts Markdown to regular Telegram HTML with readable table fallbacks.
 depends_on:
   - internal/llm/client.go
+  - internal/llm/schema.go
   - internal/config/config.go
+  - internal/telegram/progress.go
   - internal/tools/registry.go
 used_by:
   - cmd/bot/main.go
@@ -92,17 +99,23 @@ used_by:
 
 ```yaml
 title: Tool Architecture
-description: Provider-independent tool registry, native current-time tool, persistence, configuration, and execution loop.
+description: Provider-independent native and MCP tools, configuration, persistence, startup discovery, and execution loop.
 methods:
   - tools.Registry.Register: Registers a uniquely named native or MCP-backed tool.
+  - tools.Registry.RegisterAll: Atomically registers all tools discovered from one MCP server.
   - tools.Registry.Definitions: Returns deterministic LLM-facing tool definitions.
+  - tools.Registry.Source: Returns internal provider metadata for user-facing progress.
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
+  - mcpclient.Connection.Close: Closes an MCP client session.
   - telegram.Handler.generateResponseWithTools: Runs and persists the bounded LLM/tool loop.
 depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/mcpclient/client.go
+  - internal/config/config.go
   - internal/telegram/handler.go
   - migrations/00004_add_tool_messages.sql
 used_by:

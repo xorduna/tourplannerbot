@@ -43,6 +43,12 @@ func TestClientGenerateReturnsToolCalls(t *testing.T) {
 		if requestTool.Type != "function" || requestTool.Name != "current_time" || requestTool.Description != "Get the current time." {
 			t.Errorf("tool = %#v", requestTool)
 		}
+		if _, hasTopLevelOneOf := requestTool.Parameters["oneOf"]; hasTopLevelOneOf {
+			t.Errorf("tool parameters still contain top-level oneOf: %#v", requestTool.Parameters)
+		}
+		if properties, propertiesAreObject := requestTool.Parameters["properties"].(map[string]any); !propertiesAreObject || len(properties) != 2 {
+			t.Errorf("tool properties were not preserved: %#v", requestTool.Parameters["properties"])
+		}
 		responseWriter.Header().Set("Content-Type", "application/json")
 		_, _ = responseWriter.Write([]byte(`{"id":"resp_tool","output":[{"type":"reasoning","id":"rs_123","summary":[],"encrypted_content":"encrypted-state","status":"completed"},{"type":"function_call","id":"fc_123","call_id":"call_123","name":"current_time","arguments":"{\"timezone\":\"Europe/Madrid\"}"}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":5,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":15}}`))
 	}))
@@ -52,7 +58,17 @@ func TestClientGenerateReturnsToolCalls(t *testing.T) {
 	generation, err := client.Generate(context.Background(), "Use tools.", []Message{{Role: "user", Content: "What time is it?"}}, []applicationTools.Definition{{
 		Name:        "current_time",
 		Description: "Get the current time.",
-		Parameters:  map[string]any{"type": "object", "properties": map[string]any{}},
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"timezone":   map[string]any{"type": "string"},
+				"utc_offset": map[string]any{"type": "string"},
+			},
+			"oneOf": []any{
+				map[string]any{"required": []string{"timezone"}},
+				map[string]any{"required": []string{"utc_offset"}},
+			},
+		},
 	}})
 	if err != nil {
 		t.Fatalf("Generate returned an error: %v", err)

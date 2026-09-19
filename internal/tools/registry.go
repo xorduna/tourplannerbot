@@ -20,17 +20,33 @@ func NewRegistry() *Registry {
 
 // Register adds one tool and rejects invalid or duplicate names.
 func (registry *Registry) Register(tool Tool) error {
-	if tool == nil {
-		return fmt.Errorf("register tool: tool is nil")
+	return registry.RegisterAll([]Tool{tool})
+}
+
+// RegisterAll atomically registers a set of tools. If any name is invalid or
+// conflicts with the registry or another tool in the set, none are added.
+func (registry *Registry) RegisterAll(newTools []Tool) error {
+	newToolsByName := make(map[string]Tool, len(newTools))
+	for _, newTool := range newTools {
+		if newTool == nil {
+			return fmt.Errorf("register tools: tool is nil")
+		}
+		definition := newTool.Definition()
+		toolName := strings.TrimSpace(definition.Name)
+		if toolName == "" {
+			return fmt.Errorf("register tools: name is required")
+		}
+		if _, alreadyRegistered := registry.toolsByName[toolName]; alreadyRegistered {
+			return fmt.Errorf("register tool %q: name is already registered", toolName)
+		}
+		if _, duplicatedInBatch := newToolsByName[toolName]; duplicatedInBatch {
+			return fmt.Errorf("register tool %q: name is duplicated in registration batch", toolName)
+		}
+		newToolsByName[toolName] = newTool
 	}
-	definition := tool.Definition()
-	if strings.TrimSpace(definition.Name) == "" {
-		return fmt.Errorf("register tool: name is required")
+	for toolName, newTool := range newToolsByName {
+		registry.toolsByName[toolName] = newTool
 	}
-	if _, alreadyRegistered := registry.toolsByName[definition.Name]; alreadyRegistered {
-		return fmt.Errorf("register tool %q: name is already registered", definition.Name)
-	}
-	registry.toolsByName[definition.Name] = tool
 	return nil
 }
 
@@ -44,6 +60,16 @@ func (registry *Registry) Definitions() []Definition {
 		return definitions[firstIndex].Name < definitions[secondIndex].Name
 	})
 	return definitions
+}
+
+// Source returns the internal source label for a registered tool. The label is
+// application metadata and is not exposed in the LLM function definition.
+func (registry *Registry) Source(name string) string {
+	registeredTool, found := registry.toolsByName[name]
+	if !found {
+		return ""
+	}
+	return registeredTool.Definition().Source
 }
 
 // Execute invokes a registered tool by name.

@@ -129,23 +129,24 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			return
 		}
 
-		responseText, err := telegramHandler.generateResponseWithTools(ctx, userMessage.ID, chatID, messageThreadID, senderUser.ID, conversationMessages)
+		responseProgress := newTelegramResponseProgress(ctx, telegramHandler, telegramBot, chatID, messageThreadID)
+		responseText, err := telegramHandler.generateResponseWithTools(ctx, userMessage.ID, chatID, messageThreadID, senderUser.ID, conversationMessages, responseProgress)
 		if err != nil {
 			telegramHandler.logger.Error("failed to generate LLM response",
 				"chat_id", chatID,
 				"telegram_user_id", senderUser.ID,
 				"error", err,
 			)
-			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut generar la resposta. Torna-ho a provar.")
+			responseProgress.finish(ctx, "No he pogut generar la resposta. Torna-ho a provar.")
 			return
 		}
-		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, responseText)
+		responseProgress.finish(ctx, responseText)
 	}
 }
 
 // generateResponseWithTools runs the bounded LLM/tool loop, persists every tool
 // call and result, and returns the final assistant text.
-func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, sourceMessageID uint64, chatID int64, messageThreadID int, userID int64, conversationMessages []llm.Message) (string, error) {
+func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, sourceMessageID uint64, chatID int64, messageThreadID int, userID int64, conversationMessages []llm.Message, responseProgress responseProgressReporter) (string, error) {
 	if telegramHandler.toolCallMaxIterations < 1 {
 		return "", fmt.Errorf("tool call iteration limit must be positive")
 	}
@@ -208,6 +209,7 @@ func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, s
 		}
 
 		for _, toolCall := range generation.ToolCalls {
+			responseProgress.reportToolUse(ctx, toolCall.Name, telegramHandler.toolRegistry.Source(toolCall.Name))
 			toolExecutionStartedAt := time.Now()
 			telegramHandler.logger.Info(fmt.Sprintf("using tool %s", toolCall.Name),
 				"chat_id", chatID,
@@ -252,6 +254,7 @@ func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, s
 				ToolName:   toolCall.Name,
 			})
 		}
+		responseProgress.reportPreparingResponse(ctx)
 	}
 
 	return "", fmt.Errorf("tool call loop exceeded %d iterations", telegramHandler.toolCallMaxIterations)
@@ -465,8 +468,28 @@ func displayName(senderUser *models.User) string {
 	return "Unknown Telegram user"
 }
 
-// sendText sends text to a Telegram chat and logs any delivery error.
-func (telegramHandler *Handler) sendText(ctx context.Context, telegramBot *bot.Bot, chatID int64, messageThreadID int, text string) {
+// sendText sends text to a Telegram chat, logs delivery failures, and returns
+// the final Telegram API error when no delivery format succeeds.
+func (telegramHandler *Handler) sendText(ctx context.Context, telegramBot *bot.Bot, chatID int64, messageThreadID int, text string) error {
+	formattedRichHTML, hasTables := formatTelegramRichHTML(text)
+	if hasTables {
+		_, richMessageError := telegramBot.SendRichMessage(ctx, &bot.SendRichMessageParams{
+			ChatID:          chatID,
+			MessageThreadID: messageThreadID,
+			RichMessage: models.InputRichMessage{
+				HTML: formattedRichHTML,
+			},
+		})
+		if richMessageError == nil {
+			return nil
+		}
+		telegramHandler.logger.Warn("Telegram rich table failed, using readable list fallback",
+			"chat_id", chatID,
+			"message_thread_id", messageThreadID,
+			"error", richMessageError,
+		)
+	}
+
 	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:          chatID,
 		MessageThreadID: messageThreadID,
@@ -480,4 +503,5 @@ func (telegramHandler *Handler) sendText(ctx context.Context, telegramBot *bot.B
 			"error", err,
 		)
 	}
+	return err
 }

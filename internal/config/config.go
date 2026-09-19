@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +14,15 @@ import (
 	"github.com/spf13/viper"
 )
 
-const defaultCurrentTimeTimezone = "Europe/Madrid"
+const (
+	defaultCurrentTimeTimezone = "Europe/Madrid"
+	defaultMCPTimeout          = 30 * time.Second
+)
+
+var (
+	supportedMCPServerNames = []string{"wikipedia", "openstreetmap"}
+	mcpServerNamePattern    = regexp.MustCompile(`^[a-z0-9_]+$`)
+)
 
 // CurrentTimeToolConfig contains configuration for the native current-time tool.
 type CurrentTimeToolConfig struct {
@@ -20,9 +30,21 @@ type CurrentTimeToolConfig struct {
 	DefaultTimezone string
 }
 
+// MCPServerConfig contains the connection and authentication settings for one
+// Streamable HTTP MCP server.
+type MCPServerConfig struct {
+	Name        string
+	Enabled     bool
+	URL         string
+	AuthType    string
+	Token       string
+	CallTimeout time.Duration
+}
+
 // ToolsConfig contains configuration shared by the application's tools.
 type ToolsConfig struct {
 	CurrentTime CurrentTimeToolConfig
+	MCPServers  []MCPServerConfig
 }
 
 // Config holds all application configuration values.
@@ -99,6 +121,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if _, err := time.LoadLocation(currentTimeDefaultTimezone); err != nil {
 		return nil, fmt.Errorf("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE must be a valid IANA timezone, got %q: %w", currentTimeDefaultTimezone, err)
 	}
+	mcpServers, err := loadMCPServerConfigurations(configuration)
+	if err != nil {
+		return nil, err
+	}
 
 	openAIModel := configuration.GetString("openai.model")
 	llmProvider := configuration.GetString("llm.provider")
@@ -125,10 +151,117 @@ func LoadFromEnvironment() (*Config, error) {
 				Enabled:         currentTimeEnabled,
 				DefaultTimezone: currentTimeDefaultTimezone,
 			},
+			MCPServers: mcpServers,
 		},
 		AccessPIN: accessPIN,
 		LogLevel:  configuration.GetString("log_level"),
 	}, nil
+}
+
+// loadMCPServerConfigurations loads the dynamic TOOLS_MCPS list and applies
+// each server's optional TOOLS_<NAME>_ENABLED override. Known servers are also
+// considered when absent from the list so an explicit true value can enable
+// them.
+func loadMCPServerConfigurations(configuration *viper.Viper) ([]MCPServerConfig, error) {
+	listedServerNames, err := parseMCPServerNames(configuration.GetString("tools.mcps"))
+	if err != nil {
+		return nil, err
+	}
+
+	listedServers := make(map[string]bool, len(listedServerNames))
+	candidateServerNames := make([]string, 0, len(listedServerNames)+len(supportedMCPServerNames))
+	seenCandidates := make(map[string]bool, len(listedServerNames)+len(supportedMCPServerNames))
+	for _, serverName := range listedServerNames {
+		listedServers[serverName] = true
+		candidateServerNames = append(candidateServerNames, serverName)
+		seenCandidates[serverName] = true
+	}
+	for _, serverName := range supportedMCPServerNames {
+		if !seenCandidates[serverName] {
+			candidateServerNames = append(candidateServerNames, serverName)
+		}
+	}
+
+	serverConfigurations := make([]MCPServerConfig, 0, len(candidateServerNames))
+	for _, serverName := range candidateServerNames {
+		configurationPrefix := "tools." + serverName
+		enabled := listedServers[serverName]
+		enabledKey := configurationPrefix + ".enabled"
+		if configuration.IsSet(enabledKey) {
+			environmentVariableName := "TOOLS_" + strings.ToUpper(serverName) + "_ENABLED"
+			enabled, err = booleanValue(configuration, enabledKey, environmentVariableName)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		serverConfiguration := MCPServerConfig{
+			Name:        serverName,
+			Enabled:     enabled,
+			URL:         strings.TrimSpace(configuration.GetString(configurationPrefix + ".url")),
+			AuthType:    strings.ToLower(strings.TrimSpace(configuration.GetString(configurationPrefix + ".auth_type"))),
+			Token:       strings.TrimSpace(configuration.GetString(configurationPrefix + ".token")),
+			CallTimeout: defaultMCPTimeout,
+		}
+		if serverConfiguration.AuthType == "" {
+			serverConfiguration.AuthType = "none"
+		}
+		if configuredTimeout := strings.TrimSpace(configuration.GetString(configurationPrefix + ".timeout")); configuredTimeout != "" {
+			serverConfiguration.CallTimeout, err = time.ParseDuration(configuredTimeout)
+			if err != nil || serverConfiguration.CallTimeout <= 0 {
+				return nil, fmt.Errorf("TOOLS_%s_TIMEOUT must be a positive duration, got: %s", strings.ToUpper(serverName), configuredTimeout)
+			}
+		}
+		if err := validateMCPServerConfiguration(serverConfiguration); err != nil {
+			return nil, err
+		}
+		serverConfigurations = append(serverConfigurations, serverConfiguration)
+	}
+	return serverConfigurations, nil
+}
+
+// parseMCPServerNames normalizes and de-duplicates the comma-separated MCP
+// server list while preserving its configured order.
+func parseMCPServerNames(rawServerNames string) ([]string, error) {
+	serverNames := make([]string, 0)
+	seenServerNames := make(map[string]bool)
+	for _, rawServerName := range strings.Split(rawServerNames, ",") {
+		serverName := strings.ToLower(strings.TrimSpace(rawServerName))
+		if serverName == "" {
+			continue
+		}
+		if !mcpServerNamePattern.MatchString(serverName) {
+			return nil, fmt.Errorf("TOOLS_MCPS contains invalid server name %q; use lowercase letters, digits, and underscores", serverName)
+		}
+		if !seenServerNames[serverName] {
+			serverNames = append(serverNames, serverName)
+			seenServerNames[serverName] = true
+		}
+	}
+	return serverNames, nil
+}
+
+// validateMCPServerConfiguration validates settings that are required only
+// when a server is enabled.
+func validateMCPServerConfiguration(serverConfiguration MCPServerConfig) error {
+	if !serverConfiguration.Enabled {
+		return nil
+	}
+	environmentVariablePrefix := "TOOLS_" + strings.ToUpper(serverConfiguration.Name)
+	if serverConfiguration.URL == "" {
+		return fmt.Errorf("%s_URL is required when the MCP server is enabled", environmentVariablePrefix)
+	}
+	parsedURL, err := url.ParseRequestURI(serverConfiguration.URL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return fmt.Errorf("%s_URL must be an absolute HTTP or HTTPS URL, got: %s", environmentVariablePrefix, serverConfiguration.URL)
+	}
+	if serverConfiguration.AuthType != "none" && serverConfiguration.AuthType != "bearer" {
+		return fmt.Errorf("%s_AUTH_TYPE must be none or bearer, got: %s", environmentVariablePrefix, serverConfiguration.AuthType)
+	}
+	if serverConfiguration.AuthType == "bearer" && serverConfiguration.Token == "" {
+		return fmt.Errorf("%s_TOKEN is required when %s_AUTH_TYPE=bearer", environmentVariablePrefix, environmentVariablePrefix)
+	}
+	return nil
 }
 
 // requiredString returns a non-empty required configuration value.

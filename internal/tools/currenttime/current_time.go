@@ -46,6 +46,7 @@ func (currentTimeTool *Tool) Definition() tools.Definition {
 			"additionalProperties": false,
 		},
 		Strict: false,
+		Source: "native",
 	}
 }
 

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"tourplannerbot/internal/config"
 	"tourplannerbot/internal/database"
@@ -14,6 +16,7 @@ import (
 	"tourplannerbot/internal/telegram"
 	applicationTools "tourplannerbot/internal/tools"
 	"tourplannerbot/internal/tools/currenttime"
+	"tourplannerbot/internal/tools/mcpclient"
 
 	"github.com/go-telegram/bot"
 )
@@ -35,6 +38,8 @@ func main() {
 	}))
 
 	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
+	applicationContext, cancelApplicationContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancelApplicationContext()
 
 	toolRegistry := applicationTools.NewRegistry()
 	if applicationConfig.Tools.CurrentTime.Enabled {
@@ -48,15 +53,15 @@ func main() {
 			os.Exit(1)
 		}
 	}
+	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)
+	defer closeMCPConnections(logger, mcpConnections)
+
 	registeredToolDefinitions := toolRegistry.Definitions()
 	registeredToolNames := make([]string, 0, len(registeredToolDefinitions))
 	for _, registeredToolDefinition := range registeredToolDefinitions {
 		registeredToolNames = append(registeredToolNames, registeredToolDefinition.Name)
 	}
 	logger.Info("tools initialized", "enabled_tools", registeredToolNames)
-
-	applicationContext, cancelApplicationContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancelApplicationContext()
 
 	databaseConnection, err := database.Open(applicationContext, applicationConfig.DatabaseURL)
 	if err != nil {
@@ -119,4 +124,79 @@ func main() {
 	logger.Info("bot is running, press Ctrl+C to stop")
 	telegramBot.Start(applicationContext)
 	logger.Info("bot stopped gracefully")
+}
+
+// initializeMCPServers connects enabled Streamable HTTP servers independently.
+// A failed server is logged and skipped so other tools remain available.
+func initializeMCPServers(applicationContext context.Context, logger *slog.Logger, serverConfigurations []config.MCPServerConfig, toolRegistry *applicationTools.Registry) []*mcpclient.Connection {
+	mcpConnections := make([]*mcpclient.Connection, 0, len(serverConfigurations))
+	for _, serverConfiguration := range serverConfigurations {
+		if !serverConfiguration.Enabled {
+			logger.Debug(fmt.Sprintf("MCP %s is disabled", serverConfiguration.Name),
+				"mcp_name", serverConfiguration.Name,
+				"status", "disabled",
+			)
+			continue
+		}
+
+		initializationStartedAt := time.Now()
+		logger.Info(fmt.Sprintf("loading MCP %s", serverConfiguration.Name),
+			"mcp_name", serverConfiguration.Name,
+			"mcp_url", serverConfiguration.URL,
+			"status", "loading",
+		)
+		initializationContext, cancelInitialization := context.WithTimeout(applicationContext, serverConfiguration.CallTimeout)
+		mcpConnection, err := mcpclient.Connect(initializationContext, mcpclient.Config{
+			Name:           serverConfiguration.Name,
+			URL:            serverConfiguration.URL,
+			AuthType:       serverConfiguration.AuthType,
+			Token:          serverConfiguration.Token,
+			RequestTimeout: serverConfiguration.CallTimeout,
+		})
+		cancelInitialization()
+		initializationDuration := time.Since(initializationStartedAt)
+		if err != nil {
+			logger.Warn(fmt.Sprintf("MCP %s disabled after initialization failure in %s", serverConfiguration.Name, initializationDuration),
+				"mcp_name", serverConfiguration.Name,
+				"mcp_url", serverConfiguration.URL,
+				"duration_ms", initializationDuration.Milliseconds(),
+				"status", "disabled",
+				"error", err,
+			)
+			continue
+		}
+
+		discoveredTools := mcpConnection.Tools()
+		if err := toolRegistry.RegisterAll(discoveredTools); err != nil {
+			_ = mcpConnection.Close()
+			logger.Warn(fmt.Sprintf("MCP %s disabled after tool registration failure in %s", serverConfiguration.Name, initializationDuration),
+				"mcp_name", serverConfiguration.Name,
+				"mcp_url", serverConfiguration.URL,
+				"duration_ms", initializationDuration.Milliseconds(),
+				"status", "disabled",
+				"error", err,
+			)
+			continue
+		}
+
+		mcpConnections = append(mcpConnections, mcpConnection)
+		logger.Info(fmt.Sprintf("MCP %s loaded %d tools in %s", serverConfiguration.Name, len(discoveredTools), initializationDuration),
+			"mcp_name", serverConfiguration.Name,
+			"mcp_url", serverConfiguration.URL,
+			"tool_count", len(discoveredTools),
+			"duration_ms", initializationDuration.Milliseconds(),
+			"status", "ready",
+		)
+	}
+	return mcpConnections
+}
+
+// closeMCPConnections closes all successfully initialized MCP sessions during
+// application shutdown and reports any close failures.
+func closeMCPConnections(logger *slog.Logger, mcpConnections []*mcpclient.Connection) {
+	for _, mcpConnection := range mcpConnections {
+		if err := mcpConnection.Close(); err != nil {
+			logger.Warn("failed to close MCP connection", "error", err)
+		}
+	}
 }

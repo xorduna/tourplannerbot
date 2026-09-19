@@ -13,6 +13,7 @@ type Definition struct {
 	Description string
 	Parameters  map[string]any
 	Strict      bool
+	Source      string
 }
 
 // Tool exposes a definition and executes one call using JSON arguments.

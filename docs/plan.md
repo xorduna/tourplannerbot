@@ -310,7 +310,8 @@ Each one is a single task for Claude Code / Copilot.
 - Native `current_time` tool with an optional IANA timezone
 - Persist tool calls and results in message history
 - Viper configuration, including per-tool enablement
-- **Completed**: The model can request the current time, receive the native tool result, and produce a final answer from persisted conversation items.
+- Show live typing and update one Telegram progress message across thinking, tool use, and final delivery
+- **Completed**: The model can request the current time, receive the native tool result, and produce a final answer from persisted conversation items while the user sees live progress.
 
 ### Slice 7 — Editable Prompts
 - Load system prompts and skills from `prompts/` filesystem
@@ -319,12 +320,13 @@ Each one is a single task for Claude Code / Copilot.
 - Write initial skill files with BCN knowledge
 - **Done when**: Edit a .md file, restart bot, behavior changes
 
-### Slice 8 — MCP Wikipedia
+### Slice 8 — MCP Wikipedia and OpenStreetMap ✅ Complete
 - Load configured MCP servers at startup over Streamable HTTP
 - Per-server enablement overrides the `TOOLS_MCPS` list
 - Support unauthenticated and bearer-token connections
 - Disable only the MCP that fails initialization
-- Register Wikipedia's discovered tools without renaming them
+- Register discovered Wikipedia and OpenStreetMap tools without renaming them
+- **Completed**: Both local containers are discovered through the official Go MCP SDK, registered atomically, and exposed to the existing persisted tool loop.
 
 ### Slice 9+ — More Tools (one per slice)
 - Each tool is independent: implement handler, register, done
