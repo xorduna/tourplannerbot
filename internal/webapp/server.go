@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"tourplannerbot/internal/buildinfo"
+
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -17,14 +19,19 @@ type ReadinessChecker interface {
 	Check(applicationContext context.Context) error
 }
 
-// NewServer creates the Echo server for the web application. It intentionally
-// exposes only operational endpoints until the Mini App is added in a later slice.
-func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker) *echo.Echo {
+type livenessResponse struct {
+	Status    string `json:"status"`
+	Version   string `json:"version"`
+	BuildTime string `json:"build_time"`
+}
+
+// NewServer creates the Echo server for the operational endpoints and embedded Mini App.
+func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker, buildInformation buildinfo.Information) *echo.Echo {
 	echoServer := echo.New()
 	echoServer.Logger = logger
 	echoServer.Use(middleware.Recover())
 	echoServer.Use(middleware.RequestLogger())
-	echoServer.GET("/healthz", handleLiveness)
+	echoServer.GET("/healthz", handleLiveness(buildInformation))
 	echoServer.GET("/readyz", handleReadiness(readinessChecker))
 	registerMiniAppRoutes(echoServer, embeddedAssetFileSystem())
 	return echoServer
@@ -42,8 +49,14 @@ func registerMiniAppRoutes(echoServer *echo.Echo, assetFileSystem fs.FS) {
 
 // handleLiveness reports that the process is accepting HTTP requests without
 // checking external dependencies.
-func handleLiveness(echoContext *echo.Context) error {
-	return echoContext.String(http.StatusOK, "ok\n")
+func handleLiveness(buildInformation buildinfo.Information) echo.HandlerFunc {
+	return func(echoContext *echo.Context) error {
+		return echoContext.JSON(http.StatusOK, livenessResponse{
+			Status:    "ok",
+			Version:   buildInformation.Version,
+			BuildTime: buildInformation.BuildTime,
+		})
+	}
 }
 
 // handleReadiness verifies that PostgreSQL can accept a request.

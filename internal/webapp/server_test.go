@@ -11,7 +11,14 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"tourplannerbot/internal/buildinfo"
 )
+
+var testBuildInformation = buildinfo.Information{
+	Version:   "main_abcdef0",
+	BuildTime: "2026-09-20T10:30:00Z",
+}
 
 type readinessCheckerFunc func(applicationContext context.Context) error
 
@@ -23,7 +30,7 @@ func (function readinessCheckerFunc) Check(applicationContext context.Context) e
 // newTestServer creates an Echo server without writing request logs in test output.
 func newTestServer(readinessChecker ReadinessChecker) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(logger, readinessChecker)
+	return NewServer(logger, readinessChecker, testBuildInformation)
 }
 
 func TestHandlerReturnsLivenessWithoutCheckingDependencies(t *testing.T) {
@@ -40,8 +47,9 @@ func TestHandlerReturnsLivenessWithoutCheckingDependencies(t *testing.T) {
 	if responseRecorder.Code != http.StatusOK {
 		t.Errorf("GET /healthz status = %d, want %d", responseRecorder.Code, http.StatusOK)
 	}
-	if responseRecorder.Body.String() != "ok\n" {
-		t.Errorf("GET /healthz body = %q, want %q", responseRecorder.Body.String(), "ok\n")
+	wantBody := "{\"status\":\"ok\",\"version\":\"main_abcdef0\",\"build_time\":\"2026-09-20T10:30:00Z\"}\n"
+	if responseRecorder.Body.String() != wantBody {
+		t.Errorf("GET /healthz body = %q, want %q", responseRecorder.Body.String(), wantBody)
 	}
 	if readinessCheckCalls != 0 {
 		t.Errorf("GET /healthz readiness checks = %d, want 0", readinessCheckCalls)
@@ -93,7 +101,7 @@ func TestServerLogsEachRequest(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
 	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error {
 		return nil
-	}))
+	}), testBuildInformation)
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	responseRecorder := httptest.NewRecorder()
 

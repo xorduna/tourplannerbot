@@ -23,5 +23,18 @@ if ! doctl apps get "${DO_APP_ID}" --format ID,Spec.Name,DefaultIngress --no-hea
   exit 1
 fi
 
+echo "Validating the rendered spec as an update to App Platform app ${DO_APP_ID}."
+if ! doctl apps propose --app "${DO_APP_ID}" --spec .do/app.deploy.yaml > /dev/null; then
+  echo "DigitalOcean rejected the proposed spec before applying it." >&2
+  echo "Review the validation error above; the active app has not been modified." >&2
+  exit 1
+fi
+
+echo "The proposed target spec is valid. Applying the update."
 echo "Updating App Platform app ${DO_APP_ID} with image tag ${IMAGE_TAG}."
-doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml --format ID,DefaultIngress,Updated --wait
+if ! doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml --format ID,DefaultIngress,Updated --wait; then
+  echo "DigitalOcean validated the target spec but forbade the update operation." >&2
+  echo "The target spec is valid, but the worker-to-service transition may still require separate updates." >&2
+  echo "Provide the DigitalOcean request ID printed above to support." >&2
+  exit 1
+fi

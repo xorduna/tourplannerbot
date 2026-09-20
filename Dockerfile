@@ -7,11 +7,15 @@ RUN npm run build
 
 FROM golang:1.26-alpine AS builder
 WORKDIR /app
+ARG VERSION=development
+ARG BUILD_TIME=unknown
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web-builder /app/internal/webapp/dist ./internal/webapp/dist
-RUN CGO_ENABLED=0 go build -o bot ./cmd/bot
+RUN CGO_ENABLED=0 go build -trimpath \
+    -ldflags="-X tourplannerbot/internal/buildinfo.ApplicationVersion=${VERSION} -X tourplannerbot/internal/buildinfo.ApplicationBuildTime=${BUILD_TIME}" \
+    -o bot ./cmd/bot
 
 FROM alpine:3.19
 RUN apk add --no-cache ca-certificates

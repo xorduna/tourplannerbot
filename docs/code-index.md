@@ -29,10 +29,12 @@ used_by:
 title: Database and Migration Operations
 description: PostgreSQL connection, GORM persistence, Goose migration, and DigitalOcean deployment procedures.
 methods:
+  - buildinfo.Current: Returns the version and UTC build time embedded in the binary.
   - database.Open: Opens and validates the GORM PostgreSQL connection.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
+  - internal/buildinfo/buildinfo.go
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql

@@ -1,6 +1,39 @@
 name: tourplannerbot
 region: lon  # change to your preferred region (nyc, sfo, fra, sgp, etc.)
 
+envs:
+  - key: TELEGRAM_BOT_TOKEN
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TELEGRAM_BOT_TOKEN}"
+  - key: DATABASE_URL
+    scope: RUN_TIME
+    type: SECRET
+    value: "${DATABASE_URL}"
+  - key: OPENAI_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: "${OPENAI_API_KEY}"
+  - key: ACCESS_PIN
+    scope: RUN_TIME
+    type: SECRET
+    value: "${ACCESS_PIN}"
+  - key: OPENAI_MODEL
+    scope: RUN_TIME
+    value: gpt-5.6-luna
+  - key: OPENAI_BASE_URL
+    scope: RUN_TIME
+    value: https://api.openai.com/v1
+  - key: LOG_LEVEL
+    scope: RUN_TIME
+    value: info
+  - key: PORT
+    scope: RUN_TIME
+    value: "8080"
+  - key: APP_BASE_URL
+    scope: RUN_TIME
+    value: https://tourplannerbot-qiskb.ondigitalocean.app
+
 services:
   - name: web
     image:
@@ -25,37 +58,6 @@ services:
       success_threshold: 1
       failure_threshold: 6
       http_path: /healthz
-    envs:
-      - key: TELEGRAM_BOT_TOKEN
-        scope: RUN_TIME
-        type: SECRET
-        value: "${TELEGRAM_BOT_TOKEN}"
-      - key: DATABASE_URL
-        scope: RUN_TIME
-        type: SECRET
-        value: "${DATABASE_URL}"
-      - key: OPENAI_API_KEY
-        scope: RUN_TIME
-        type: SECRET
-        value: "${OPENAI_API_KEY}"
-      - key: ACCESS_PIN
-        scope: RUN_TIME
-        type: SECRET
-        value: "${ACCESS_PIN}"
-      - key: OPENAI_MODEL
-        scope: RUN_TIME
-        value: gpt-5.6-luna
-      - key: OPENAI_BASE_URL
-        scope: RUN_TIME
-        value: https://api.openai.com/v1
-      - key: LOG_LEVEL
-        scope: RUN_TIME
-        value: info
-      - key: PORT
-        scope: RUN_TIME
-        value: "8080"
-      # APP_BASE_URL is intentionally not injected until Slice 3 needs it to
-      # create Telegram Mini App links.
 
 ingress:
   rules:

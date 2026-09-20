@@ -2,10 +2,12 @@
 title: Database and Migration Operations
 description: PostgreSQL connection, GORM persistence, Goose migration, and DigitalOcean deployment procedures.
 methods:
+  - buildinfo.Current: Returns the version and UTC build time embedded in the binary.
   - database.Open: Opens and validates the GORM PostgreSQL connection.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
+  - internal/buildinfo/buildinfo.go
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
@@ -51,9 +53,11 @@ The `migrate` GitHub Actions job runs after the image build and before the servi
 
 These are separate workflow steps on the same runner, so the migration error and firewall cleanup are visible independently in GitHub Actions. The workflow delegates the shell logic to the versioned scripts in `scripts/`.
 
-The `deploy` job injects the `DATABASE_URL` GitHub Actions secret as a runtime secret. It first verifies that the DigitalOcean token can read the configured app, then uses `doctl apps update --wait`, so the GitHub Actions job waits for App Platform to finish the rollout and reports a failed deployment as a failed workflow. The App Platform application must be authorized as a database trusted source in the DigitalOcean console before deployment. The service's `/healthz` endpoint is used for both deployment health and liveness checks; `/readyz` checks the database without causing a restart while it is temporarily unavailable.
+The build job creates an immutable `<branch>_<short-sha>` image tag, embeds that version and the UTC build time in the Go binary, and pushes both the immutable tag and `latest`. The deployment always references the immutable tag. The service exposes the embedded metadata as JSON from `/healthz`, while `/readyz` checks the database without causing a restart while it is temporarily unavailable.
+
+The `deploy` job injects the `DATABASE_URL` GitHub Actions secret into the app-level runtime environment. It first verifies that the DigitalOcean token can read the configured app and uses `doctl apps propose` to validate the rendered spec as a non-mutating update. It then uses `doctl apps update --wait`, so the GitHub Actions job waits for App Platform to finish the rollout and reports a failed deployment as a failed workflow. The App Platform application must be authorized as a database trusted source before deployment.
 
 Before enabling this flow, configure these GitHub Actions values:
 
-- Repository variables: `DO_APP_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. `APP_BASE_URL` is intentionally deferred until Slice 3 requires it for Telegram links.
+- Repository variables: `DO_APP_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
 - Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `ACCESS_PIN`.

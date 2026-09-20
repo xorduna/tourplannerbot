@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"tourplannerbot/internal/buildinfo"
 	"tourplannerbot/internal/config"
 	"tourplannerbot/internal/database"
 	"tourplannerbot/internal/llm"
@@ -50,14 +51,19 @@ func run() error {
 		Level: logLevel,
 	}))
 
-	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
+	buildInformation := buildinfo.Current()
+	logger.Info("starting tourplannerbot",
+		"log_level", applicationConfig.LogLevel,
+		"version", buildInformation.Version,
+		"build_time", buildInformation.BuildTime,
+	)
 	signalContext, cancelSignalContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancelSignalContext()
 	applicationContext, cancelApplicationContext := context.WithCancel(signalContext)
 	defer cancelApplicationContext()
 
 	databaseReadiness := database.NewReadiness()
-	echoServer := webapp.NewServer(logger, databaseReadiness)
+	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation)
 	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()

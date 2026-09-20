@@ -16,7 +16,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Native Telegram Rich Message tables with a readable list fallback
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
-- Echo HTTP server with liveness (`/healthz`) and PostgreSQL readiness (`/readyz`) checks
+- Echo HTTP server with versioned liveness (`/healthz`) and PostgreSQL readiness (`/readyz`) checks
 
 The bot stores authorized user messages, generated replies, tool calls, and tool results, then sends the newest items from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
@@ -66,17 +66,20 @@ web/                           # SolidJS + TypeScript + Vite Mini App source
    make run
    ```
 
-### HTTPS tunnel for Telegram Mini Apps
+### Public URL and local HTTPS tunnels
 
-The health endpoint can be exposed through a temporary HTTPS tunnel before the
-Mini App UI is added. Start the bot, then in another terminal run:
+The production application is available at
+`https://tourplannerbot-qiskb.ondigitalocean.app`, which is configured as its
+`APP_BASE_URL` in the App Platform spec.
+
+For local Telegram Mini App testing, start the bot and expose it through a
+temporary HTTPS tunnel in another terminal:
 
 ```bash
 ngrok http 8080
 ```
 
-Use the generated HTTPS address as `APP_BASE_URL` when a later Mini App slice
-needs to generate Telegram links. Until then, `APP_BASE_URL` may be unset.
+Use the generated HTTPS address as the local `APP_BASE_URL`.
 
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of
@@ -150,7 +153,18 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 ## Deployment (DigitalOcean App Platform)
 
 - Component type: **Service**, listening on `0.0.0.0:$PORT`; it still runs one Telegram polling consumer
-- `GET /healthz` is used for platform health and liveness checks; `GET /readyz` returns `503` until PostgreSQL is reachable
-- Set all required env vars as secrets in the DO console
+- `GET /healthz` is used for platform health and liveness checks and returns the compiled version and UTC build time; `GET /readyz` returns `503` until PostgreSQL is reachable
+- Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret. `APP_BASE_URL` will be added to the deployment flow in Slice 3, when Telegram links need it.
+- Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret.
+
+For example, the liveness response has this shape:
+
+```json
+{
+  "status": "ok",
+  "version": "main_a46595e",
+  "build_time": "2026-09-20T10:30:00Z"
+}
+```
