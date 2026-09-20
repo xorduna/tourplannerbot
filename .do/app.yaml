@@ -35,7 +35,7 @@ envs:
     value: https://tourplannerbot-qiskb.ondigitalocean.app
 
 services:
-  - name: web
+  - name: tourplannerbot
     image:
       registry_type: DOCR
       registry: maulabs  # replace with your DO registry name
@@ -62,7 +62,7 @@ services:
 ingress:
   rules:
     - component:
-        name: web
+        name: tourplannerbot
       match:
         path:
           prefix: /

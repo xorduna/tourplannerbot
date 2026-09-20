@@ -34,7 +34,7 @@ echo "The proposed target spec is valid. Applying the update."
 echo "Updating App Platform app ${DO_APP_ID} with image tag ${IMAGE_TAG}."
 if ! doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml --format ID,DefaultIngress,Updated --wait; then
   echo "DigitalOcean validated the target spec but forbade the update operation." >&2
-  echo "The target spec is valid, but the worker-to-service transition may still require separate updates." >&2
-  echo "Provide the DigitalOcean request ID printed above to support." >&2
+  echo "Confirm the GitHub DIGITALOCEAN_ACCESS_TOKEN is the intended token and grants app:update." >&2
+  echo "If a Full Access token also fails, the DigitalOcean team is restricted; provide the request ID above to support." >&2
   exit 1
 fi
