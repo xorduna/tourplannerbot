@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"strings"
 	"testing"
 
 	"tourplannerbot/internal/models"
@@ -39,15 +40,39 @@ func TestParseDraftCommandAcceptsTemporaryDraftOperations(t *testing.T) {
 	}
 }
 
-// TestDraftBodyPreviewDoesNotSplitUnicodeCharacters verifies command feedback
-// can truncate a long Unicode draft without corrupting its displayed text.
-func TestDraftBodyPreviewDoesNotSplitUnicodeCharacters(t *testing.T) {
+// TestDraftPreviewTextShowsTheCompleteUnicodeDraft verifies the Telegram
+// preview no longer truncates a proposal before its Edit button.
+func TestDraftPreviewTextShowsTheCompleteUnicodeDraft(t *testing.T) {
 	bodyText := string(make([]rune, 0, 501))
 	for characterIndex := 0; characterIndex < 501; characterIndex++ {
 		bodyText += "à"
 	}
-	preview := draftBodyPreview(bodyText)
-	if len([]rune(preview)) != 501 || []rune(preview)[500] != '…' {
-		t.Errorf("draftBodyPreview rune length/end = %d/%q, want 501/ellipsis", len([]rune(preview)), []rune(preview)[len([]rune(preview))-1])
+	contentJSON, err := models.NewTiptapDocumentFromPlainText(bodyText)
+	if err != nil {
+		t.Fatalf("NewTiptapDocumentFromPlainText returned error: %v", err)
+	}
+	preview := draftPreviewText("T’he preparat aquesta proposta.", &models.Draft{ContentJSON: contentJSON, BodyText: bodyText})
+	if !strings.Contains(preview, bodyText) || strings.Contains(preview, "…") {
+		t.Errorf("draft preview did not preserve complete Unicode body: %q", preview)
+	}
+}
+
+// TestActiveDraftContextMessageContainsCanonicalCurrentVersion verifies the
+// agent sees the persisted revision and body but the wrapper itself is merely
+// an in-memory LLM message.
+func TestActiveDraftContextMessageContainsCanonicalCurrentVersion(t *testing.T) {
+	contentJSON, err := models.NewTiptapDocumentFromMarkdown("Hola **Diana**")
+	if err != nil {
+		t.Fatalf("NewTiptapDocumentFromMarkdown returned error: %v", err)
+	}
+	contextMessage := activeDraftContextMessage(&models.Draft{
+		ID:          "2ee30369-f4ae-4741-8cfc-e58f2eb9b5f1",
+		Kind:        models.DraftKindEmail,
+		ContentJSON: contentJSON,
+		BodyText:    "Hola Diana",
+		Revision:    4,
+	})
+	if contextMessage.Role != models.MessageRoleUser || !strings.Contains(contextMessage.Content, `"revision":4`) || !strings.Contains(contextMessage.Content, `"body_markdown":"Hola **Diana**"`) {
+		t.Errorf("active draft context = %#v", contextMessage)
 	}
 }

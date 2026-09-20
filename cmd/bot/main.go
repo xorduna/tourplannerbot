@@ -19,6 +19,7 @@ import (
 	"tourplannerbot/internal/telegram"
 	applicationTools "tourplannerbot/internal/tools"
 	"tourplannerbot/internal/tools/currenttime"
+	"tourplannerbot/internal/tools/draft"
 	"tourplannerbot/internal/tools/mcpclient"
 	"tourplannerbot/internal/webapp"
 
@@ -90,13 +91,6 @@ func run() error {
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)
 	defer closeMCPConnections(logger, mcpConnections)
 
-	registeredToolDefinitions := toolRegistry.Definitions()
-	registeredToolNames := make([]string, 0, len(registeredToolDefinitions))
-	for _, registeredToolDefinition := range registeredToolDefinitions {
-		registeredToolNames = append(registeredToolNames, registeredToolDefinition.Name)
-	}
-	logger.Info("tools initialized", "enabled_tools", registeredToolNames)
-
 	databaseConnection, err := openDatabaseWithRetry(applicationContext, logger, applicationConfig.DatabaseURL)
 	if err != nil {
 		logger.Info("application stopped before PostgreSQL became available", "error", err)
@@ -112,6 +106,31 @@ func run() error {
 	allowedUserAuthorizer.SetDatabaseConnection(databaseConnection)
 	draftReader.SetDatabaseConnection(databaseConnection)
 	defer sqlDatabaseConnection.Close()
+	createDraftTool, err := draft.New(databaseConnection)
+	if err != nil {
+		logger.Error("failed to initialize create_draft tool", "error", err)
+		return fmt.Errorf("initialize create_draft tool: %w", err)
+	}
+	if err := toolRegistry.Register(createDraftTool); err != nil {
+		logger.Error("failed to register create_draft tool", "error", err)
+		return fmt.Errorf("register create_draft tool: %w", err)
+	}
+	updateDraftTool, err := draft.NewUpdate(databaseConnection)
+	if err != nil {
+		logger.Error("failed to initialize update_draft tool", "error", err)
+		return fmt.Errorf("initialize update_draft tool: %w", err)
+	}
+	if err := toolRegistry.Register(updateDraftTool); err != nil {
+		logger.Error("failed to register update_draft tool", "error", err)
+		return fmt.Errorf("register update_draft tool: %w", err)
+	}
+
+	registeredToolDefinitions := toolRegistry.Definitions()
+	registeredToolNames := make([]string, 0, len(registeredToolDefinitions))
+	for _, registeredToolDefinition := range registeredToolDefinitions {
+		registeredToolNames = append(registeredToolNames, registeredToolDefinition.Name)
+	}
+	logger.Info("tools initialized", "enabled_tools", registeredToolNames)
 
 	llmClient := llm.NewClient(
 		applicationConfig.OpenAIAPIKey,

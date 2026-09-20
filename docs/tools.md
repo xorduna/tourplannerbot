@@ -7,7 +7,10 @@ methods:
   - tools.Registry.Definitions: Returns deterministic LLM-facing tool definitions.
   - tools.Registry.Source: Returns internal provider metadata for user-facing progress.
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
+  - tools.NewExecutionContext: Carries trusted Telegram conversation data to native tools.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
+  - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
   - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
   - mcpclient.Connection.Close: Closes an MCP client session.
   - telegram.Handler.generateResponseWithTools: Runs and persists the bounded LLM/tool loop.
@@ -15,6 +18,8 @@ depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/draft/create_draft.go
+  - internal/tools/draft/update_draft.go
   - internal/tools/mcpclient/client.go
   - internal/config/config.go
   - internal/telegram/handler.go
@@ -27,6 +32,34 @@ used_by:
 # Tool Architecture
 
 All tools implement one provider-independent interface containing an LLM-facing definition and an execution method that accepts JSON arguments. Definitions also carry an internal source label such as `native`, `wikipedia`, or `openstreetmap`; this label is used for user-facing progress but is not sent as part of the LLM function schema. The registry rejects duplicate names and returns definitions in deterministic name order. Native tools and MCP adapters share this registry. Batch registration is atomic, so a name collision cannot leave half of one server's tools active.
+
+For tools that require identity, the handler adds a typed `ExecutionContext` to
+the standard Go context just before execution. It contains the trusted Telegram
+chat, topic, and user IDs from the incoming update. It is not part of the tool
+schema or model-provided JSON, preventing a model call from selecting another
+conversation or owner.
+
+## Native draft creation
+
+`create_draft(kind, body)` is always registered once PostgreSQL is available.
+It accepts only the communication kind (`email`, `whatsapp`, or `generic`) and
+the complete draft body. A successful call creates revision 1 through the
+existing transactional repository, marks any previous active draft in that
+conversation as superseded, and returns canonical JSON with its UUID, kind,
+empty subject, body, and revision. The agent may use basic Markdown for lists,
+bold, italic, and HTTPS links; it is converted into canonical Tiptap content
+before persistence. The handler reconstructs that formatting for the complete
+Telegram preview, separated by a divider, and shows the corresponding **Edit**
+button after the model's final confirmation.
+
+`update_draft(body, expected_revision)` is also registered after
+PostgreSQL becomes available. Before each model generation, the handler loads
+the authorized active draft and presents a transient JSON wrapper containing its
+canonical Markdown body and revision. It is not persisted in `messages`.
+`update_draft` receives the active draft ID and owner only from the trusted
+execution context, replaces the complete canonical content, and reuses the
+database's optimistic revision check. An editor save that wins the race causes
+the tool to return a conflict rather than overwrite it.
 
 ## Native current-time tool
 
@@ -43,6 +76,13 @@ Execution errors become JSON tool results with an `error` property. This gives t
 Every execution emits human-readable log messages such as `using tool current_time` and `tool current_time use completed in 1.2ms`. The same entries contain structured conversation identifiers, loop iteration, tool name, provider call ID, outcome, and duration in milliseconds. Successful calls also record the result length. Arguments and complete results are deliberately excluded from logs to avoid leaking sensitive data.
 
 The user sees the same lifecycle through one editable Telegram status message. It starts as `💭 Pensant…`, changes to a human description of the active tool, and then to `✍️ Preparant la resposta…` before the next model call. These descriptions identify Wikipedia, OpenStreetMap, or the native time tool and the general operation, but deliberately omit raw tool arguments.
+
+When `create_draft` successfully creates a draft, the status message instead
+becomes the final confirmation followed by the complete canonical draft preview
+after a horizontal divider. The preview reconstructs the stored basic
+formatting—lists, bold, italic, and HTTPS links—and carries the precise Mini App
+URL for that draft. Its delivered Telegram message ID is retained for later
+refreshes.
 
 ## MCP servers
 

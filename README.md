@@ -95,10 +95,25 @@ Inline `web_app` buttons are limited by Telegram to private chats with the bot.
 The eventual group flow will use Telegram's `startapp` launch alternative;
 `/editor` explains this limitation instead of showing an unusable button.
 
-### Temporary draft commands
+### Draft creation and temporary commands
 
-Until the Mini App can display and edit a draft, authorized users can exercise
-the persistence flow directly in Telegram:
+When Diana explicitly asks to write or reply with a sendable email, WhatsApp,
+or other editable text, the model calls `create_draft`. It creates a real
+revision-one draft for the current conversation and replies with a short
+confirmation, a complete preview after a horizontal divider, and an **Edit**
+button in a private chat. Lists, bold, italic, and HTTPS links are retained in
+both the preview and the editor. The model can supply only the kind and text:
+the application provides the conversation and owner from the Telegram update.
+Email subjects are intentionally left empty, including when drafting a reply.
+
+When an active draft exists, an explicit change request such as “fes-la més
+curta” updates that same draft rather than creating a new one. The model gets a
+fresh, non-persisted copy of the draft and its revision immediately before each
+response. The update uses the same conflict check as the Mini App, so a newer
+manual save is never overwritten silently.
+
+The following authorized commands remain useful as a diagnostic persistence
+interface:
 
 ```text
 /draft create whatsapp Bon dia, et va bé parlar demà?
@@ -108,10 +123,9 @@ the persistence flow directly in Telegram:
 
 `create` creates a real revision-one draft for the current chat and topic, and
 supersedes the previous active draft in that conversation. `active` displays
-only the calling user's active draft. These commands do not invoke the LLM and
-will be replaced by the normal drafting flow in later slices. In a private chat
-they also attach an **Open editor** button that opens that exact draft in
-read-only mode.
+only the calling user's active draft. These commands do not invoke the LLM. In
+a private chat they also attach an **Open editor** button that opens that exact
+draft for editing.
 
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of

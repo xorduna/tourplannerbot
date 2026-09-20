@@ -56,8 +56,13 @@ func TestValidateAndProjectTiptapDocumentAcceptsOnlySupportedNodes(t *testing.T)
 			wantError: true,
 		},
 		{
-			name:      "disallowed link mark",
-			content:   `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"No","marks":[{"type":"link","attrs":{"href":"https://example.com"}}]}]}]}`,
+			name:     "supported HTTPS link mark",
+			content:  `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"No","marks":[{"type":"link","attrs":{"href":"https://example.com","target":"_blank","rel":"noopener noreferrer nofollow","class":null,"title":null}}]}]}]}`,
+			wantText: "No",
+		},
+		{
+			name:      "disallowed unsafe link mark",
+			content:   `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"No","marks":[{"type":"link","attrs":{"href":"javascript:alert(1)"}}]}]}]}`,
 			wantError: true,
 		},
 	}
@@ -78,5 +83,29 @@ func TestValidateAndProjectTiptapDocumentAcceptsOnlySupportedNodes(t *testing.T)
 				t.Errorf("body text = %q, want %q", bodyText, testCase.wantText)
 			}
 		})
+	}
+}
+
+// TestMarkdownDraftContentRoundTripsSupportedFormatting verifies agent-created
+// Markdown becomes editable Tiptap content and can be faithfully previewed.
+func TestMarkdownDraftContentRoundTripsSupportedFormatting(t *testing.T) {
+	input := "Hola **Diana**,\n\n- Primer *punt*\n- [Més informació](https://example.com/info)\n\n1. Un\n2. Dos"
+	contentJSON, err := NewTiptapDocumentFromMarkdown(input)
+	if err != nil {
+		t.Fatalf("NewTiptapDocumentFromMarkdown returned error: %v", err)
+	}
+	bodyText, err := ValidateAndProjectTiptapDocument(contentJSON)
+	if err != nil {
+		t.Fatalf("ValidateAndProjectTiptapDocument returned error: %v", err)
+	}
+	if bodyText != "Hola Diana,\n\n- Primer punt\n- Més informació\n\n1. Un\n2. Dos" {
+		t.Errorf("body text = %q", bodyText)
+	}
+	markdown, err := TiptapDocumentToMarkdown(contentJSON)
+	if err != nil {
+		t.Fatalf("TiptapDocumentToMarkdown returned error: %v", err)
+	}
+	if markdown != input {
+		t.Errorf("Markdown preview = %q, want %q", markdown, input)
 	}
 }

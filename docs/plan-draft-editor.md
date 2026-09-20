@@ -329,7 +329,7 @@ only `?draft=<uuid>`. After the Telegram session handshake, the Mini App loads
 `GET /api/drafts/{id}` and renders its Tiptap JSON with an editor configured as
 read-only. The API returns the same `404` for missing and unauthorized drafts.
 
-### Slice 6 — Editing and concurrency from the Mini App
+### Slice 6 — Editing and concurrency from the Mini App ✅ Complete
 
 **Demonstrable result:** the user can edit, save, close, and reopen the draft without losing changes.
 
@@ -354,11 +354,11 @@ revision and has dirty, saving, saved, conflict, and error states. Browser and
 Telegram close confirmations protect unsaved changes. The server accepts only
 the corresponding closed Tiptap schema and derives the plain-text projection.
 
-### Slice 7 — Draft creation by the agent
+### Slice 7 — Draft creation by the agent ✅ Complete
 
 **Demonstrable result:** “Write me a WhatsApp message…” creates the draft in the database, and the bot responds with a preview and an **Edit** button.
 
-- Add the native `create_draft(kind, subject?, body)` tool.
+- Add the native `create_draft(kind, body)` tool.
 - Give tools a typed execution context containing the conversation and user; these IDs will not come from model arguments.
 - Add prompt instructions describing when to create a new draft.
 - Return canonical JSON from the tool.
@@ -372,7 +372,15 @@ the corresponding closed Tiptap schema and derives the plain-text projection.
 - The button opens exactly the created draft.
 - A normal response that does not request drafting creates no draft.
 
-### Slice 8 — Active draft in context and editing by the agent
+**Implementation note:** `create_draft(kind, body)` is a strict native tool.
+The handler supplies its trusted chat, topic, and Telegram user through a typed
+execution context, so the model cannot choose any of these values. The tool
+returns canonical draft JSON; after the final short confirmation, the temporary
+Telegram progress message becomes a complete preview separated with a divider,
+preserving its basic rich formatting and the exact draft's **Edit** button. The
+delivered message ID is kept on the draft for later synchronization.
+
+### Slice 8 — Active draft in context and editing by the agent ✅ Complete
 
 **Demonstrable result:** after a manual edit, “make it shorter” modifies the existing draft instead of creating another one.
 
@@ -389,6 +397,15 @@ the corresponding closed Tiptap schema and derives the plain-text projection.
 - Change instructions update the same UUID.
 - An explicit request for a new text replaces the active draft.
 - A stale agent update receives a conflict instead of overwriting a newer user edit.
+
+**Implementation note:** before each model generation, the handler loads the
+authorized active draft and adds a transient JSON context item reconstructed
+from PostgreSQL. This wrapper is never stored in `messages`. The strict native
+`update_draft(body, expected_revision)` tool takes its draft identity and owner
+from the trusted execution context, preserves its subject, converts Markdown to
+canonical Tiptap content, and uses `database.UpdateDraft` for the same revision check as
+the Mini App. A successful update replaces the current Telegram status with the
+new preview and **Edit** button.
 
 ### Slice 9 — Telegram preview synchronization
 

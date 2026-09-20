@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	applicationModels "tourplannerbot/internal/models"
+
 	"github.com/go-telegram/bot"
 )
 
@@ -73,6 +75,8 @@ func TestToolProgressText(t *testing.T) {
 		expectedText string
 	}{
 		{name: "current time", toolName: "current_time", toolSource: "native", expectedText: "🕐 Consultant l’hora…"},
+		{name: "create draft", toolName: "create_draft", toolSource: "native", expectedText: "📝 Preparant la proposta…"},
+		{name: "update draft", toolName: "update_draft", toolSource: "native", expectedText: "📝 Actualitzant la proposta…"},
 		{name: "OpenStreetMap nearby", toolName: "query_nearby", toolSource: "openstreetmap", expectedText: "🗺️ Utilitzant OpenStreetMap per buscar llocs propers…"},
 		{name: "Wikipedia search", toolName: "search_wikipedia", toolSource: "wikipedia", expectedText: "🔎 Utilitzant Wikipedia per buscar informació…"},
 		{name: "unprefixed Wikipedia summary", toolName: "get_summary", expectedText: "🔎 Utilitzant Wikipedia per obtenir un resum…"},
@@ -168,5 +172,45 @@ func TestTelegramResponseProgressEditsFinalTableAsRichMessage(t *testing.T) {
 	}
 	if !strings.Contains(richMessage.HTML, "<table") {
 		t.Fatalf("rich_message does not contain a table: %q", richMessage.HTML)
+	}
+}
+
+// TestTelegramResponseProgressFinishesDraftAsFullPreview verifies a generated
+// draft replaces the temporary status with a full separated preview and keeps
+// the exact Mini App draft reference in its button.
+func TestTelegramResponseProgressFinishesDraftAsFullPreview(t *testing.T) {
+	recordingHTTPClient := &recordingTelegramHTTPClient{}
+	telegramBot, telegramBotError := bot.New(
+		"test-token",
+		bot.WithSkipGetMe(),
+		bot.WithHTTPClient(time.Second, recordingHTTPClient),
+	)
+	if telegramBotError != nil {
+		t.Fatalf("create Telegram bot: %v", telegramBotError)
+	}
+	handler := &Handler{
+		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		appBaseURL: "https://example.test",
+	}
+	progress := newTelegramResponseProgress(context.Background(), handler, telegramBot, 123, 0)
+	contentJSON, contentJSONError := applicationModels.NewTiptapDocumentFromMarkdown("Bon dia,\n\n- **Et va bé** demà?\n- [Confirma-ho](https://example.com)")
+	if contentJSONError != nil {
+		t.Fatalf("create draft content: %v", contentJSONError)
+	}
+	draft := &applicationModels.Draft{ID: "2ee30369-f4ae-4741-8cfc-e58f2eb9b5f1", ContentJSON: contentJSON, BodyText: "Bon dia,\n\n- Et va bé demà?\n- Confirma-ho"}
+
+	telegramMessageID := progress.finishDraftPreview(context.Background(), "private", draft, "T’he preparat aquesta proposta.")
+	if telegramMessageID == nil || *telegramMessageID != 77 {
+		t.Fatalf("finishDraftPreview message ID = %v, want 77", telegramMessageID)
+	}
+	recordedRequests := recordingHTTPClient.recordedRequests()
+	if len(recordedRequests) != 3 {
+		t.Fatalf("recorded %d Telegram requests, want 3: %#v", len(recordedRequests), recordedRequests)
+	}
+	if !strings.Contains(recordedRequests[2].fields["text"], "────────") || !strings.Contains(recordedRequests[2].fields["text"], "<b>Et va bé</b>") || !strings.Contains(recordedRequests[2].fields["text"], "<a href=\"https://example.com\">Confirma-ho</a>") {
+		t.Errorf("draft preview = %q, want divider and formatted content", recordedRequests[2].fields["text"])
+	}
+	if !strings.Contains(recordedRequests[2].fields["reply_markup"], "https://example.test/miniapp?draft=2ee30369-f4ae-4741-8cfc-e58f2eb9b5f1") {
+		t.Errorf("draft reply markup = %q, want exact draft URL", recordedRequests[2].fields["reply_markup"])
 	}
 }

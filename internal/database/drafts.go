@@ -36,6 +36,7 @@ type CreateDraftInput struct {
 	OwnerTelegramID int64
 	Kind            models.DraftKind
 	Subject         *string
+	ContentJSON     json.RawMessage
 	BodyText        string
 }
 
@@ -68,9 +69,19 @@ func CreateDraft(applicationContext context.Context, databaseConnection *gorm.DB
 	}
 
 	canonicalBodyText := strings.ReplaceAll(strings.ReplaceAll(createDraftInput.BodyText, "\r\n", "\n"), "\r", "\n")
-	contentJSON, err := models.NewTiptapDocumentFromPlainText(canonicalBodyText)
-	if err != nil {
-		return nil, fmt.Errorf("convert draft text to Tiptap document: %w", err)
+	contentJSON := createDraftInput.ContentJSON
+	if len(contentJSON) == 0 {
+		var err error
+		contentJSON, err = models.NewTiptapDocumentFromPlainText(canonicalBodyText)
+		if err != nil {
+			return nil, fmt.Errorf("convert draft text to Tiptap document: %w", err)
+		}
+	} else {
+		var err error
+		canonicalBodyText, err = models.ValidateAndProjectTiptapDocument(contentJSON)
+		if err != nil {
+			return nil, fmt.Errorf("validate draft content: %w", err)
+		}
 	}
 	draftID, err := newDraftUUID()
 	if err != nil {
@@ -190,6 +201,29 @@ func UpdateDraft(applicationContext context.Context, databaseConnection *gorm.DB
 		return nil, err
 	}
 	return &updatedDraft, nil
+}
+
+// SetDraftTelegramMessageID records the Telegram preview message associated
+// with an authorized draft. Content and revision are deliberately untouched so
+// presentation bookkeeping cannot overwrite an editor change.
+func SetDraftTelegramMessageID(applicationContext context.Context, databaseConnection *gorm.DB, draftID string, ownerTelegramID int64, telegramMessageID int64) error {
+	if databaseConnection == nil {
+		return errors.New("database connection is required")
+	}
+	if draftID == "" || ownerTelegramID <= 0 || telegramMessageID <= 0 {
+		return errors.New("valid draft ID, owner Telegram ID, and Telegram message ID are required")
+	}
+	updateResult := databaseConnection.WithContext(applicationContext).
+		Model(&models.Draft{}).
+		Where("id = ? AND owner_telegram_id = ?", draftID, ownerTelegramID).
+		Update("telegram_message_id", telegramMessageID)
+	if updateResult.Error != nil {
+		return fmt.Errorf("set draft Telegram message ID: %w", updateResult.Error)
+	}
+	if updateResult.RowsAffected == 0 {
+		return ErrDraftNotFound
+	}
+	return nil
 }
 
 // lockDraftConversation serializes draft creation for one chat and thread for

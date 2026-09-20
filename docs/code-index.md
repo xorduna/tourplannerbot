@@ -145,7 +145,10 @@ methods:
   - tools.Registry.Definitions: Returns deterministic LLM-facing tool definitions.
   - tools.Registry.Source: Returns internal provider metadata for user-facing progress.
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
+  - tools.NewExecutionContext: Carries trusted Telegram conversation data to native tools.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
+  - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
   - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
   - mcpclient.Connection.Close: Closes an MCP client session.
   - telegram.Handler.generateResponseWithTools: Runs and persists the bounded LLM/tool loop.
@@ -153,6 +156,8 @@ depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/draft/create_draft.go
+  - internal/tools/draft/update_draft.go
   - internal/tools/mcpclient/client.go
   - internal/config/config.go
   - internal/telegram/handler.go

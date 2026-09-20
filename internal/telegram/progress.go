@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	applicationModels "tourplannerbot/internal/models"
+
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
@@ -119,6 +121,59 @@ func (progress *telegramResponseProgress) finish(ctx context.Context, responseTe
 	}
 }
 
+// finishDraftPreview replaces the temporary status with the complete separated
+// draft preview and its Mini App button. It returns the delivered Telegram
+// message ID so the caller can retain it for future preview synchronization.
+func (progress *telegramResponseProgress) finishDraftPreview(ctx context.Context, chatType models.ChatType, draft *applicationModels.Draft, responseText string) *int64 {
+	progress.stopTyping()
+	heading := strings.TrimSpace(responseText)
+	if heading == "" {
+		heading = "T’he preparat aquesta proposta."
+	}
+
+	if progress.statusMessageID != 0 {
+		_, editError := progress.telegramBot.EditMessageText(ctx, &bot.EditMessageTextParams{
+			ChatID:      progress.chatID,
+			MessageID:   progress.statusMessageID,
+			Text:        formatTelegramHTML(draftPreviewText(heading, draft)),
+			ParseMode:   models.ParseModeHTML,
+			ReplyMarkup: progress.handler.draftPreviewReplyMarkup(chatType, draft.ID),
+		})
+		if editError == nil {
+			telegramMessageID := int64(progress.statusMessageID)
+			return &telegramMessageID
+		}
+		progress.handler.logger.Warn("failed to replace Telegram progress message with draft preview",
+			"chat_id", progress.chatID,
+			"message_thread_id", progress.messageThreadID,
+			"message_id", progress.statusMessageID,
+			"draft_id", draft.ID,
+			"error", editError,
+		)
+	}
+
+	previewMessage, sendError := progress.handler.sendDraftPreviewMessage(ctx, progress.telegramBot, progress.chatID, progress.messageThreadID, chatType, draft, heading)
+	if sendError != nil {
+		progress.handler.logger.Error("failed to send Telegram draft preview", "chat_id", progress.chatID, "draft_id", draft.ID, "error", sendError)
+		return nil
+	}
+	if progress.statusMessageID != 0 {
+		if _, deleteError := progress.telegramBot.DeleteMessage(ctx, &bot.DeleteMessageParams{
+			ChatID:    progress.chatID,
+			MessageID: progress.statusMessageID,
+		}); deleteError != nil {
+			progress.handler.logger.Warn("failed to remove stale Telegram progress message after draft preview delivery",
+				"chat_id", progress.chatID,
+				"message_thread_id", progress.messageThreadID,
+				"message_id", progress.statusMessageID,
+				"error", deleteError,
+			)
+		}
+	}
+	telegramMessageID := int64(previewMessage.ID)
+	return &telegramMessageID
+}
+
 // editFinalResponse preserves native Rich Message tables when the response has
 // one and otherwise edits the placeholder as ordinary Telegram HTML.
 func (progress *telegramResponseProgress) editFinalResponse(ctx context.Context, responseText string) error {
@@ -215,6 +270,10 @@ func toolProgressText(toolName string, toolSource string) string {
 	switch {
 	case normalizedToolName == "current_time":
 		return "🕐 Consultant l’hora…"
+	case normalizedToolName == "create_draft":
+		return "📝 Preparant la proposta…"
+	case normalizedToolName == "update_draft":
+		return "📝 Actualitzant la proposta…"
 	case normalizedToolSource == "openstreetmap" || strings.Contains(normalizedToolName, "openstreetmap"):
 		return fmt.Sprintf("🗺️ Utilitzant OpenStreetMap per %s…", openStreetMapToolPurpose(normalizedToolName))
 	case normalizedToolSource == "wikipedia" || strings.Contains(normalizedToolName, "wikipedia") || isWikipediaToolName(normalizedToolName):

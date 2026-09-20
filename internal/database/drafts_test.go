@@ -103,6 +103,16 @@ func TestDraftRepositoryCreatesSupersedesAndSerializes(t *testing.T) {
 	if updatedDraft.Revision != 2 || updatedDraft.BodyText != "Text actualitzat" {
 		t.Errorf("updated draft = %#v, want revision two and updated body", updatedDraft)
 	}
+	if err := SetDraftTelegramMessageID(context.Background(), databaseConnection, secondDraft.ID, 42, 777); err != nil {
+		t.Fatalf("SetDraftTelegramMessageID returned error: %v", err)
+	}
+	draftWithTelegramPreview, err := FindDraftByID(context.Background(), databaseConnection, secondDraft.ID)
+	if err != nil {
+		t.Fatalf("FindDraftByID after setting Telegram message ID returned error: %v", err)
+	}
+	if draftWithTelegramPreview.TelegramMessageID == nil || *draftWithTelegramPreview.TelegramMessageID != 777 || draftWithTelegramPreview.Revision != 2 {
+		t.Errorf("draft after setting Telegram message ID = %#v, want message 777 without revision change", draftWithTelegramPreview)
+	}
 	_, staleUpdateError := UpdateDraft(context.Background(), databaseConnection, UpdateDraftInput{
 		ID:               secondDraft.ID,
 		OwnerTelegramID:  42,
