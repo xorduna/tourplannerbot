@@ -3,14 +3,22 @@ package webapp
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tourplannerbot/internal/buildinfo"
 )
@@ -22,15 +30,38 @@ var testBuildInformation = buildinfo.Information{
 
 type readinessCheckerFunc func(applicationContext context.Context) error
 
+type allowedUserAuthorizerFunc func(applicationContext context.Context, telegramUserID int64) (bool, error)
+
 // Check calls the function supplied by the test.
 func (function readinessCheckerFunc) Check(applicationContext context.Context) error {
 	return function(applicationContext)
 }
 
+// IsAllowed calls the function supplied by the test.
+func (function allowedUserAuthorizerFunc) IsAllowed(applicationContext context.Context, telegramUserID int64) (bool, error) {
+	return function(applicationContext, telegramUserID)
+}
+
 // newTestServer creates an Echo server without writing request logs in test output.
 func newTestServer(readinessChecker ReadinessChecker) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(logger, readinessChecker, testBuildInformation)
+	return NewServer(logger, readinessChecker, testBuildInformation, nil)
+}
+
+// newTestSessionAuthenticator creates an authenticator with stable time for HTTP tests.
+func newTestSessionAuthenticator(testingHandle *testing.T, allowedUserAuthorizer AllowedUserAuthorizer) *SessionAuthenticator {
+	testingHandle.Helper()
+	sessionAuthenticator, err := NewSessionAuthenticator(SessionConfig{
+		TelegramBotToken:     "test-telegram-token",
+		AuthenticationMaxAge: 5 * time.Minute,
+		Clock: func() time.Time {
+			return time.Date(2026, time.September, 20, 12, 0, 0, 0, time.UTC)
+		},
+	}, allowedUserAuthorizer)
+	if err != nil {
+		testingHandle.Fatalf("NewSessionAuthenticator returned error: %v", err)
+	}
+	return sessionAuthenticator
 }
 
 func TestHandlerReturnsLivenessWithoutCheckingDependencies(t *testing.T) {
@@ -101,7 +132,9 @@ func TestServerLogsEachRequest(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(&logOutput, nil))
 	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error {
 		return nil
-	}), testBuildInformation)
+	}), testBuildInformation, newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
+		return true, nil
+	})))
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	responseRecorder := httptest.NewRecorder()
 
@@ -113,6 +146,111 @@ func TestServerLogsEachRequest(t *testing.T) {
 	if !strings.Contains(logOutput.String(), "status=200") {
 		t.Errorf("Echo request log = %q, want status=200", logOutput.String())
 	}
+}
+
+func TestMiniAppSessionHandshakeValidatesTelegramAndSetsSessionCookie(t *testing.T) {
+	sessionAuthenticator := newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
+		return telegramUserID == 42, nil
+	}))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator)
+	initData := signedTestInitData(t, TelegramUser{ID: 42, FirstName: "Diana", Username: "diana"}, time.Date(2026, time.September, 20, 11, 59, 0, 0, time.UTC))
+	request := httptest.NewRequest(http.MethodPost, "/api/miniapp/session", strings.NewReader(`{"init_data":`+jsonQuote(initData)+`}`))
+	request.Header.Set("Content-Type", "application/json")
+	responseRecorder := httptest.NewRecorder()
+
+	server.ServeHTTP(responseRecorder, request)
+
+	if responseRecorder.Code != http.StatusOK {
+		t.Fatalf("POST /api/miniapp/session status = %d, want %d; body = %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
+	}
+	if !strings.Contains(responseRecorder.Body.String(), `"first_name":"Diana"`) {
+		t.Errorf("session response = %q, want authenticated identity", responseRecorder.Body.String())
+	}
+	cookieHeaders := responseRecorder.Result().Cookies()
+	if len(cookieHeaders) != 1 {
+		t.Fatalf("session cookie count = %d, want 1", len(cookieHeaders))
+	}
+	if cookieHeaders[0].Name != miniAppSessionCookieName || !cookieHeaders[0].HttpOnly || !cookieHeaders[0].Secure || cookieHeaders[0].Path != "/api" {
+		t.Errorf("session cookie = %#v, want secure HttpOnly API cookie", cookieHeaders[0])
+	}
+	authenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/future-protected-route", nil)
+	authenticatedRequest.AddCookie(cookieHeaders[0])
+	telegramUserID, err := sessionAuthenticator.AuthenticateSessionRequest(authenticatedRequest)
+	if err != nil || telegramUserID != 42 {
+		t.Errorf("AuthenticateSessionRequest = (%d, %v), want (42, nil)", telegramUserID, err)
+	}
+	tamperedRequest := httptest.NewRequest(http.MethodGet, "/api/future-protected-route", nil)
+	tamperedCookie := *cookieHeaders[0]
+	tamperedCookie.Value += "x"
+	tamperedRequest.AddCookie(&tamperedCookie)
+	if _, err := sessionAuthenticator.AuthenticateSessionRequest(tamperedRequest); !errors.Is(err, ErrInvalidTelegramInitData) {
+		t.Errorf("AuthenticateSessionRequest tampered cookie error = %v, want ErrInvalidTelegramInitData", err)
+	}
+}
+
+func TestMiniAppSessionHandshakeRejectsInvalidExpiredAndUnauthorizedRequests(t *testing.T) {
+	currentTime := time.Date(2026, time.September, 20, 12, 0, 0, 0, time.UTC)
+	testCases := []struct {
+		name       string
+		initData   string
+		allowed    bool
+		wantStatus int
+	}{
+		{name: "missing credentials", initData: "", allowed: true, wantStatus: http.StatusUnauthorized},
+		{name: "tampered credentials", initData: signedTestInitData(t, TelegramUser{ID: 42, FirstName: "Diana"}, currentTime) + "x", allowed: true, wantStatus: http.StatusUnauthorized},
+		{name: "expired credentials", initData: signedTestInitData(t, TelegramUser{ID: 42, FirstName: "Diana"}, currentTime.Add(-6*time.Minute)), allowed: true, wantStatus: http.StatusUnauthorized},
+		{name: "unallowed user", initData: signedTestInitData(t, TelegramUser{ID: 42, FirstName: "Diana"}, currentTime), allowed: false, wantStatus: http.StatusForbidden},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			sessionAuthenticator := newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
+				return testCase.allowed, nil
+			}))
+			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+			server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator)
+			request := httptest.NewRequest(http.MethodPost, "/api/miniapp/session", strings.NewReader(`{"init_data":`+jsonQuote(testCase.initData)+`}`))
+			request.Header.Set("Content-Type", "application/json")
+			responseRecorder := httptest.NewRecorder()
+
+			server.ServeHTTP(responseRecorder, request)
+
+			if responseRecorder.Code != testCase.wantStatus {
+				t.Errorf("POST /api/miniapp/session status = %d, want %d; body = %s", responseRecorder.Code, testCase.wantStatus, responseRecorder.Body.String())
+			}
+		})
+	}
+}
+
+// signedTestInitData creates launch data using Telegram's documented HMAC scheme.
+func signedTestInitData(testingHandle *testing.T, telegramUser TelegramUser, authenticatedAt time.Time) string {
+	testingHandle.Helper()
+	userJSON, err := json.Marshal(telegramUser)
+	if err != nil {
+		testingHandle.Fatalf("marshal Telegram user: %v", err)
+	}
+	queryValues := url.Values{}
+	queryValues.Set("auth_date", strconv.FormatInt(authenticatedAt.Unix(), 10))
+	queryValues.Set("query_id", "test-query")
+	queryValues.Set("user", string(userJSON))
+	dataCheckValues := make([]string, 0, len(queryValues))
+	for parameterName, parameterValues := range queryValues {
+		dataCheckValues = append(dataCheckValues, parameterName+"="+parameterValues[0])
+	}
+	sort.Strings(dataCheckValues)
+	secretKeyMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	_, _ = secretKeyMAC.Write([]byte("test-telegram-token"))
+	dataCheckMAC := hmac.New(sha256.New, secretKeyMAC.Sum(nil))
+	_, _ = dataCheckMAC.Write([]byte(strings.Join(dataCheckValues, "\n")))
+	queryValues.Set("hash", hex.EncodeToString(dataCheckMAC.Sum(nil)))
+	return queryValues.Encode()
+}
+
+// jsonQuote encodes one string as a JSON string for the test request body.
+func jsonQuote(value string) string {
+	encodedValue, _ := json.Marshal(value)
+	return string(encodedValue)
 }
 
 func TestServerServesEmbeddedMiniAppAndItsVersionedAssets(t *testing.T) {

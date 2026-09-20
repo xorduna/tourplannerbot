@@ -258,7 +258,7 @@ Each slice must leave an executable and verifiable feature. The order reduces ri
 - `/miniapp` works from the binary without Node installed at runtime.
 - Versioned assets load under the same public URL.
 
-### Slice 3 — Telegram button and authenticated handshake
+### Slice 3 — Telegram button and authenticated handshake ✅ Complete
 
 **Demonstrable result:** a button sent by the bot opens the Mini App, which displays the authenticated user's identity, without drafts yet.
 
@@ -275,6 +275,12 @@ Each slice must leave an executable and verifiable feature. The order reduces ri
 - Opening the API directly without valid credentials returns `401` or `403`.
 - Manipulated or expired `initData` is rejected.
 - The limitation of the `web_app` button to private chats and the `startapp` alternative for groups are documented.
+
+**Implementation note:** `/editor` is the temporary private-chat trigger. The
+server validates the Telegram Web App data-check string and `auth_date`, checks
+`allowed_users`, and sets a signed, `HttpOnly`, secure API cookie. The Mini App
+uses the session handshake response only to display the authenticated identity;
+no draft data is involved in this slice.
 
 ### Slice 4 — Draft persistence, without the agent or editor
 

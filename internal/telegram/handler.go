@@ -39,6 +39,7 @@ type Handler struct {
 	databaseConnection                  *gorm.DB
 	responseGenerator                   responseGenerator
 	accessPIN                           string
+	appBaseURL                          string
 	systemInstructions                  string
 	messageHistoryMaxMessages           int
 	toolCallMaxIterations               int
@@ -48,12 +49,13 @@ type Handler struct {
 }
 
 // NewHandler creates a message handler with the supplied system instructions and history limit.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, systemInstructions string, messageHistoryMaxMessages int, toolCallMaxIterations int, toolRegistry *applicationTools.Registry, responseGenerator responseGenerator) *Handler {
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, appBaseURL string, systemInstructions string, messageHistoryMaxMessages int, toolCallMaxIterations int, toolRegistry *applicationTools.Registry, responseGenerator responseGenerator) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
 		responseGenerator:                responseGenerator,
 		accessPIN:                        accessPIN,
+		appBaseURL:                       strings.TrimRight(appBaseURL, "/"),
 		systemInstructions:               systemInstructions,
 		messageHistoryMaxMessages:        messageHistoryMaxMessages,
 		toolCallMaxIterations:            toolCallMaxIterations,
@@ -106,6 +108,10 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		if incomingText == "" {
 			return
 		}
+		if isOpenEditorCommand(incomingText) {
+			telegramHandler.handleOpenEditorCommand(ctx, telegramBot, update.Message)
+			return
+		}
 		userMessage, err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText)
 		if err != nil {
 			telegramHandler.logger.Error("failed to save user message",
@@ -141,6 +147,43 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			return
 		}
 		responseProgress.finish(ctx, responseText)
+	}
+}
+
+// isOpenEditorCommand reports whether incomingText invokes the temporary
+// command used to test the Mini App handshake before drafts exist.
+func isOpenEditorCommand(incomingText string) bool {
+	commandParts := strings.Fields(incomingText)
+	if len(commandParts) != 1 {
+		return false
+	}
+	commandName := strings.SplitN(commandParts[0], "@", 2)[0]
+	return commandName == "/editor"
+}
+
+// handleOpenEditorCommand sends the Mini App button only in a private chat,
+// the launch mode supported by Telegram's inline web_app buttons.
+func (telegramHandler *Handler) handleOpenEditorCommand(ctx context.Context, telegramBot *bot.Bot, message *models.Message) {
+	if message.Chat.Type != models.ChatTypePrivate {
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "L'editor s'obre amb aquest botó només en un xat privat. Als grups caldrà usar l'alternativa startapp quan l'afegim.")
+		return
+	}
+	if telegramHandler.appBaseURL == "" {
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "L'editor encara no té una URL pública configurada.")
+		return
+	}
+
+	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:          message.Chat.ID,
+		MessageThreadID: message.MessageThreadID,
+		Text:            "Obre l'editor per comprovar la connexió segura amb Telegram.",
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{
+			Text:   "Open editor",
+			WebApp: &models.WebAppInfo{URL: telegramHandler.appBaseURL + "/miniapp"},
+		}}}},
+	})
+	if err != nil {
+		telegramHandler.logger.Error("failed to send Mini App button", "chat_id", message.Chat.ID, "error", err)
 	}
 }
 

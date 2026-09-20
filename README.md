@@ -17,6 +17,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
 - Echo HTTP server with versioned liveness (`/healthz`) and PostgreSQL readiness (`/readyz`) checks
+- Authenticated Telegram Mini App handshake protected by signed, short-lived API sessions
 
 The bot stores authorized user messages, generated replies, tool calls, and tool results, then sends the newest items from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
@@ -81,6 +82,19 @@ ngrok http 8080
 
 Use the generated HTTPS address as the local `APP_BASE_URL`.
 
+### Telegram Mini App handshake
+
+After authorizing yourself with the PIN, send `/editor` to the bot in a **private
+chat**. It replies with an **Open editor** button. Telegram opens `/miniapp`,
+which posts `Telegram.WebApp.initData` to the server. The server validates the
+Telegram signature and `auth_date`, confirms the user is in `allowed_users`,
+and creates a secure, HttpOnly API session cookie. The Mini App then displays
+the authenticated Telegram identity.
+
+Inline `web_app` buttons are limited by Telegram to private chats with the bot.
+The eventual group flow will use Telegram's `startapp` launch alternative;
+`/editor` explains this limitation instead of showing an unusable button.
+
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of
 `127.0.0.1`, or attach all services to one Compose network and use their service
@@ -133,6 +147,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
 | `PORT` | no | `8080` | HTTP port; production listens on the platform-provided value |
 | `APP_BASE_URL` | no | — | Public HTTPS URL, such as the final service domain or a temporary tunnel |
+| `TELEGRAM_WEBAPP_AUTH_MAX_AGE` | no | `5m` | Maximum accepted age for Telegram Mini App `initData` and the resulting API session |
 | `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
 | `LLM_PROVIDER` | no | `openai` | Provider label written to LLM audit records |

@@ -49,22 +49,23 @@ type ToolsConfig struct {
 
 // Config holds all application configuration values.
 type Config struct {
-	TelegramBotToken      string
-	DatabaseURL           string
-	OpenAIAPIKey          string
-	OpenAIModel           string
-	OpenAIBaseURL         string
-	LLMProvider           string
-	LLMTariffsDirectory   string
-	LLMMaxTokens          int
-	LLMPricing            *llm.Pricing
-	LLMHistoryMaxMessages int
-	ToolCallMaxIterations int
-	Tools                 ToolsConfig
-	AccessPIN             string
-	LogLevel              string
-	Port                  int
-	AppBaseURL            string
+	TelegramBotToken         string
+	DatabaseURL              string
+	OpenAIAPIKey             string
+	OpenAIModel              string
+	OpenAIBaseURL            string
+	LLMProvider              string
+	LLMTariffsDirectory      string
+	LLMMaxTokens             int
+	LLMPricing               *llm.Pricing
+	LLMHistoryMaxMessages    int
+	ToolCallMaxIterations    int
+	Tools                    ToolsConfig
+	AccessPIN                string
+	LogLevel                 string
+	Port                     int
+	AppBaseURL               string
+	TelegramWebAppAuthMaxAge time.Duration
 }
 
 // LoadFromEnvironment reads application configuration through Viper. Environment
@@ -86,6 +87,7 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.current_time.default_timezone", defaultCurrentTimeTimezone)
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
+	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
 
 	telegramBotToken, err := requiredString(configuration, "telegram_bot_token")
 	if err != nil {
@@ -108,6 +110,10 @@ func LoadFromEnvironment() (*Config, error) {
 		return nil, err
 	}
 	appBaseURL, err := optionalHTTPURL(configuration.GetString("app_base_url"), "APP_BASE_URL")
+	if err != nil {
+		return nil, err
+	}
+	telegramWebAppAuthMaxAge, err := positiveDuration(configuration.GetString("telegram.webapp_auth_max_age"), "TELEGRAM_WEBAPP_AUTH_MAX_AGE")
 	if err != nil {
 		return nil, err
 	}
@@ -164,10 +170,11 @@ func LoadFromEnvironment() (*Config, error) {
 			},
 			MCPServers: mcpServers,
 		},
-		AccessPIN:  accessPIN,
-		LogLevel:   configuration.GetString("log_level"),
-		Port:       port,
-		AppBaseURL: appBaseURL,
+		AccessPIN:                accessPIN,
+		LogLevel:                 configuration.GetString("log_level"),
+		Port:                     port,
+		AppBaseURL:               appBaseURL,
+		TelegramWebAppAuthMaxAge: telegramWebAppAuthMaxAge,
 	}, nil
 }
 
@@ -303,6 +310,15 @@ func portNumber(rawPort string) (int, error) {
 		return 0, fmt.Errorf("PORT must be an integer between 1 and 65535, got: %s", rawPort)
 	}
 	return parsedPort, nil
+}
+
+// positiveDuration parses a positive Go duration from an environment value.
+func positiveDuration(rawDuration string, environmentVariableName string) (time.Duration, error) {
+	parsedDuration, err := time.ParseDuration(strings.TrimSpace(rawDuration))
+	if err != nil || parsedDuration <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration, got: %s", environmentVariableName, rawDuration)
+	}
+	return parsedDuration, nil
 }
 
 // optionalHTTPURL validates the externally visible base URL when configured.

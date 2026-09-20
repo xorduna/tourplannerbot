@@ -49,6 +49,9 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.AppBaseURL != "" {
 		t.Errorf("AppBaseURL = %q, want empty", applicationConfig.AppBaseURL)
 	}
+	if applicationConfig.TelegramWebAppAuthMaxAge != 5*time.Minute {
+		t.Errorf("TelegramWebAppAuthMaxAge = %s, want 5m", applicationConfig.TelegramWebAppAuthMaxAge)
+	}
 	if applicationConfig.LLMProvider != "openai" {
 		t.Errorf("LLMProvider = %q, want openai", applicationConfig.LLMProvider)
 	}
@@ -70,6 +73,7 @@ func TestLoadFromEnvironmentLoadsWebServerSettings(t *testing.T) {
 	setRequiredEnvironment(t)
 	t.Setenv("PORT", "9090")
 	t.Setenv("APP_BASE_URL", "https://example.ngrok.app/")
+	t.Setenv("TELEGRAM_WEBAPP_AUTH_MAX_AGE", "10m")
 
 	applicationConfig, err := LoadFromEnvironment()
 	if err != nil {
@@ -81,6 +85,9 @@ func TestLoadFromEnvironmentLoadsWebServerSettings(t *testing.T) {
 	if applicationConfig.AppBaseURL != "https://example.ngrok.app" {
 		t.Errorf("AppBaseURL = %q, want https://example.ngrok.app", applicationConfig.AppBaseURL)
 	}
+	if applicationConfig.TelegramWebAppAuthMaxAge != 10*time.Minute {
+		t.Errorf("TelegramWebAppAuthMaxAge = %s, want 10m", applicationConfig.TelegramWebAppAuthMaxAge)
+	}
 }
 
 func TestLoadFromEnvironmentRejectsInvalidWebServerSettings(t *testing.T) {
@@ -88,11 +95,14 @@ func TestLoadFromEnvironmentRejectsInvalidWebServerSettings(t *testing.T) {
 		name       string
 		port       string
 		appBaseURL string
+		authMaxAge string
 	}{
 		{name: "port below range", port: "0"},
 		{name: "port above range", port: "65536"},
 		{name: "non-numeric port", port: "http"},
 		{name: "invalid base URL", appBaseURL: "example.com"},
+		{name: "invalid auth age", authMaxAge: "forever"},
+		{name: "non-positive auth age", authMaxAge: "0s"},
 	}
 
 	for _, testCase := range testCases {
@@ -103,6 +113,9 @@ func TestLoadFromEnvironmentRejectsInvalidWebServerSettings(t *testing.T) {
 			}
 			if testCase.appBaseURL != "" {
 				t.Setenv("APP_BASE_URL", testCase.appBaseURL)
+			}
+			if testCase.authMaxAge != "" {
+				t.Setenv("TELEGRAM_WEBAPP_AUTH_MAX_AGE", testCase.authMaxAge)
 			}
 
 			if _, err := LoadFromEnvironment(); err == nil {

@@ -94,3 +94,11 @@ h1 {
 .status.development .status-dot {
   background: #bd7219;
 }
+
+.status.error {
+  color: #b91c1c;
+}
+
+.status.error .status-dot {
+  background: #b91c1c;
+}

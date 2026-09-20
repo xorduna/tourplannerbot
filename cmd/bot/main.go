@@ -63,7 +63,15 @@ func run() error {
 	defer cancelApplicationContext()
 
 	databaseReadiness := database.NewReadiness()
-	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation)
+	allowedUserAuthorizer := webapp.NewGORMAllowedUserAuthorizer()
+	sessionAuthenticator, err := webapp.NewSessionAuthenticator(webapp.SessionConfig{
+		TelegramBotToken:     applicationConfig.TelegramBotToken,
+		AuthenticationMaxAge: applicationConfig.TelegramWebAppAuthMaxAge,
+	}, allowedUserAuthorizer)
+	if err != nil {
+		return fmt.Errorf("initialize Mini App authentication: %w", err)
+	}
+	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation, sessionAuthenticator)
 	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()
@@ -100,6 +108,7 @@ func run() error {
 		return fmt.Errorf("access database connection pool: %w", err)
 	}
 	databaseReadiness.SetConnection(sqlDatabaseConnection)
+	allowedUserAuthorizer.SetDatabaseConnection(databaseConnection)
 	defer sqlDatabaseConnection.Close()
 
 	llmClient := llm.NewClient(
@@ -119,6 +128,7 @@ func run() error {
 		logger,
 		databaseConnection,
 		applicationConfig.AccessPIN,
+		applicationConfig.AppBaseURL,
 		systemInstructions,
 		applicationConfig.LLMHistoryMaxMessages,
 		applicationConfig.ToolCallMaxIterations,
