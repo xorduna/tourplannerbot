@@ -282,12 +282,12 @@ server validates the Telegram Web App data-check string and `auth_date`, checks
 uses the session handshake response only to display the authenticated identity;
 no draft data is involved in this slice.
 
-### Slice 4 — Draft persistence, without the agent or editor
+### Slice 4 — Draft persistence, without the agent or editor ✅ Complete
 
 **Demonstrable result:** a draft can be created and retrieved from PostgreSQL, but it is not yet created by the model or edited in the Mini App.
 
 - Add the `drafts` migration.
-- Add models, repository, and domain service.
+- Add the draft model and small persistence helpers in `internal/database`; no separate domain layer is needed.
 - Implement transactional creation and the single-active-draft invariant.
 - Convert plain text into an initial Tiptap document.
 - Add a development-only mechanism or an integration test to create a draft.
@@ -300,7 +300,14 @@ no draft data is involved in this slice.
 - Two concurrent creations do not leave two active drafts.
 - Repository tests cover the transaction and unique index.
 
-### Slice 5 — Open and view a real draft
+**Implementation note:** the slice keeps `/editor` as the authentication-only
+Mini App trigger from slice 3. It adds the `drafts` migration, `models.Draft`,
+plain-text-to-Tiptap conversion, and transactional create/retrieve helpers in
+`internal/database`. The temporary authorized commands `/draft create
+<email|whatsapp|generic> <text>` and `/draft active` make persistence
+demonstrable without adding a public API, draft endpoint, or Mini App draft view.
+
+### Slice 5 — Open and view a real draft ✅ Complete
 
 **Demonstrable result:** the button associated with a draft opens the Mini App and displays its subject and content in read-only mode.
 
@@ -315,6 +322,12 @@ no draft data is involved in this slice.
 - The correct draft opens from the Telegram button.
 - A nonexistent UUID returns `404`.
 - An existing but unauthorized UUID does not leak content.
+
+**Implementation note:** the temporary private-chat `/draft create` and
+`/draft active` responses now carry an **Open editor** Mini App button with
+only `?draft=<uuid>`. After the Telegram session handshake, the Mini App loads
+`GET /api/drafts/{id}` and renders its Tiptap JSON with an editor configured as
+read-only. The API returns the same `404` for missing and unauthorized drafts.
 
 ### Slice 6 — Editing and concurrency from the Mini App
 

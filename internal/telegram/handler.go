@@ -3,12 +3,15 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"tourplannerbot/internal/database"
 	"tourplannerbot/internal/llm"
 	applicationModels "tourplannerbot/internal/models"
 	applicationTools "tourplannerbot/internal/tools"
@@ -112,6 +115,9 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			telegramHandler.handleOpenEditorCommand(ctx, telegramBot, update.Message)
 			return
 		}
+		if telegramHandler.handleDraftCommand(ctx, telegramBot, update.Message) {
+			return
+		}
 		userMessage, err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText)
 		if err != nil {
 			telegramHandler.logger.Error("failed to save user message",
@@ -147,6 +153,137 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 			return
 		}
 		responseProgress.finish(ctx, responseText)
+	}
+}
+
+type draftCommand struct {
+	action string
+	kind   applicationModels.DraftKind
+	body   string
+}
+
+// handleDraftCommand handles the temporary, authorized command interface used
+// to demonstrate draft persistence before the editor can display a draft.
+func (telegramHandler *Handler) handleDraftCommand(ctx context.Context, telegramBot *bot.Bot, message *models.Message) bool {
+	parsedDraftCommand, isDraftCommand := parseDraftCommand(message.Text)
+	if !isDraftCommand {
+		return false
+	}
+	if parsedDraftCommand.action == "" {
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, draftCommandUsage())
+		return true
+	}
+
+	switch parsedDraftCommand.action {
+	case "create":
+		createdDraft, err := database.CreateDraft(ctx, telegramHandler.databaseConnection, database.CreateDraftInput{
+			ChatID:          message.Chat.ID,
+			MessageThreadID: message.MessageThreadID,
+			OwnerTelegramID: message.From.ID,
+			Kind:            parsedDraftCommand.kind,
+			BodyText:        parsedDraftCommand.body,
+		})
+		if err != nil {
+			telegramHandler.logger.Error("failed to create draft from command", "chat_id", message.Chat.ID, "telegram_user_id", message.From.ID, "error", err)
+			telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "No he pogut crear el draft. Torna-ho a provar.")
+			return true
+		}
+		telegramHandler.sendDraftPreview(ctx, telegramBot, message, createdDraft, fmt.Sprintf("✓ Draft de %s creat · revisió %d", createdDraft.Kind, createdDraft.Revision))
+		return true
+	case "active":
+		activeDraft, err := database.FindActiveDraft(ctx, telegramHandler.databaseConnection, message.Chat.ID, message.MessageThreadID, message.From.ID)
+		if errors.Is(err, database.ErrDraftNotFound) {
+			telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "No tens cap draft actiu en aquesta conversa.")
+			return true
+		}
+		if err != nil {
+			telegramHandler.logger.Error("failed to find active draft from command", "chat_id", message.Chat.ID, "telegram_user_id", message.From.ID, "error", err)
+			telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "No he pogut recuperar el draft actiu. Torna-ho a provar.")
+			return true
+		}
+		telegramHandler.sendDraftPreview(ctx, telegramBot, message, activeDraft, fmt.Sprintf("Draft actiu · %s · revisió %d", activeDraft.Kind, activeDraft.Revision))
+		return true
+	default:
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, draftCommandUsage())
+		return true
+	}
+}
+
+// parseDraftCommand parses a slash command without interpreting its body as
+// model input. It returns true whenever the message targets /draft, including
+// invalid forms that should receive the command usage response.
+func parseDraftCommand(incomingText string) (draftCommand, bool) {
+	commandName, commandArguments := telegramCommandNameAndArguments(incomingText)
+	if commandName != "/draft" {
+		return draftCommand{}, false
+	}
+	action, remainingArguments := telegramCommandNameAndArguments(commandArguments)
+	switch action {
+	case "active":
+		if remainingArguments == "" {
+			return draftCommand{action: "active"}, true
+		}
+	case "create":
+		kindText, bodyText := telegramCommandNameAndArguments(remainingArguments)
+		draftKind := applicationModels.DraftKind(kindText)
+		if draftKind.IsValid() && bodyText != "" {
+			return draftCommand{action: "create", kind: draftKind, body: bodyText}, true
+		}
+	}
+	return draftCommand{}, true
+}
+
+// telegramCommandNameAndArguments separates a command word from its preserved
+// trailing arguments and accepts Telegram's optional @botname command suffix.
+func telegramCommandNameAndArguments(incomingText string) (string, string) {
+	trimmedText := strings.TrimSpace(incomingText)
+	if trimmedText == "" {
+		return "", ""
+	}
+	commandParts := strings.Fields(trimmedText)
+	commandName := strings.SplitN(commandParts[0], "@", 2)[0]
+	commandArguments := strings.TrimSpace(strings.TrimPrefix(trimmedText, commandParts[0]))
+	return commandName, commandArguments
+}
+
+// draftCommandUsage explains the intentionally small development command API.
+func draftCommandUsage() string {
+	return "Ús temporal de drafts:\n`/draft create <email|whatsapp|generic> <text>`\n`/draft active`"
+}
+
+// draftBodyPreview produces a bounded display of the canonical text without
+// affecting the complete value persisted in PostgreSQL.
+func draftBodyPreview(bodyText string) string {
+	const maximumPreviewLength = 500
+	bodyRunes := []rune(bodyText)
+	if len(bodyRunes) <= maximumPreviewLength {
+		return bodyText
+	}
+	return string(bodyRunes[:maximumPreviewLength]) + "…"
+}
+
+// sendDraftPreview sends a temporary draft summary and, in private chats,
+// attaches the Mini App button carrying only the opaque draft UUID reference.
+func (telegramHandler *Handler) sendDraftPreview(ctx context.Context, telegramBot *bot.Bot, message *models.Message, draft *applicationModels.Draft, heading string) {
+	previewText := fmt.Sprintf("%s\nID: `%s`\n\n%s", heading, draft.ID, draftBodyPreview(draft.BodyText))
+	if message.Chat.Type != models.ChatTypePrivate || telegramHandler.appBaseURL == "" {
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, previewText)
+		return
+	}
+
+	miniAppURL := telegramHandler.appBaseURL + "/miniapp?draft=" + url.QueryEscape(draft.ID)
+	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
+		ChatID:          message.Chat.ID,
+		MessageThreadID: message.MessageThreadID,
+		Text:            formatTelegramHTML(previewText),
+		ParseMode:       models.ParseModeHTML,
+		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{
+			Text:   "Open editor",
+			WebApp: &models.WebAppInfo{URL: miniAppURL},
+		}}}},
+	})
+	if err != nil {
+		telegramHandler.logger.Error("failed to send draft Mini App button", "chat_id", message.Chat.ID, "draft_id", draft.ID, "error", err)
 	}
 }
 

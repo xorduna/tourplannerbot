@@ -26,7 +26,7 @@ type livenessResponse struct {
 }
 
 // NewServer creates the Echo server for the operational endpoints and embedded Mini App.
-func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker, buildInformation buildinfo.Information, sessionAuthenticator *SessionAuthenticator) *echo.Echo {
+func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker, buildInformation buildinfo.Information, sessionAuthenticator *SessionAuthenticator, draftReader DraftReader) *echo.Echo {
 	echoServer := echo.New()
 	echoServer.Logger = logger
 	echoServer.Use(middleware.Recover())
@@ -35,6 +35,9 @@ func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker, buildInfo
 	echoServer.GET("/readyz", handleReadiness(readinessChecker))
 	if sessionAuthenticator != nil {
 		registerMiniAppSessionRoutes(echoServer, sessionAuthenticator)
+	}
+	if sessionAuthenticator != nil && draftReader != nil {
+		registerDraftRoutes(echoServer, sessionAuthenticator, draftReader)
 	}
 	registerMiniAppRoutes(echoServer, embeddedAssetFileSystem())
 	return echoServer

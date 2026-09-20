@@ -31,6 +31,9 @@ description: PostgreSQL connection, GORM persistence, Goose migration, and Digit
 methods:
   - buildinfo.Current: Returns the version and UTC build time embedded in the binary.
   - database.Open: Opens and validates the GORM PostgreSQL connection.
+  - database.CreateDraft: Transactionally supersedes and creates a conversation draft.
+  - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
+  - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
@@ -38,10 +41,14 @@ depends_on:
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
+  - migrations/00005_create_drafts.sql
   - internal/database/database.go
+  - internal/database/drafts.go
+  - internal/webapp/drafts.go
   - internal/database/readiness.go
   - internal/models/allowed_user.go
   - internal/models/message.go
+  - internal/models/draft.go
   - .github/workflows/deploy.yml
 used_by:
   - cmd/bot/main.go

@@ -32,20 +32,19 @@ textarea {
 }
 
 .shell {
-  display: grid;
-  align-items: center;
-  padding: max(24px, var(--telegram-safe-area-top)) max(20px, var(--telegram-safe-area-right)) max(24px, var(--telegram-safe-area-bottom)) max(20px, var(--telegram-safe-area-left));
+  display: flex;
+  flex-direction: column;
   color: var(--telegram-text-color);
 }
 
-.card {
-  width: min(100%, 460px);
-  margin: auto;
-  padding: 32px 28px;
-  border: 1px solid color-mix(in srgb, var(--telegram-text-color) 12%, transparent);
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--telegram-bg-color) 92%, white);
-  box-shadow: 0 18px 46px color-mix(in srgb, var(--telegram-text-color) 12%, transparent);
+.workspace {
+  width: 100%;
+  flex: 1 1 auto;
+  padding: max(24px, var(--telegram-safe-area-top)) max(20px, var(--telegram-safe-area-right)) 24px max(20px, var(--telegram-safe-area-left));
+}
+
+.workspace-header {
+  margin-bottom: 28px;
 }
 
 .eyebrow {
@@ -64,7 +63,7 @@ h1 {
 }
 
 .description {
-  margin: 16px 0 28px;
+  margin: 12px 0 0;
   color: var(--telegram-hint-color);
   font-size: 1rem;
   line-height: 1.5;
@@ -73,20 +72,21 @@ h1 {
 .status {
   display: flex;
   gap: 10px;
-  align-items: flex-start;
-  padding: 13px 14px;
-  border-radius: 14px;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px max(14px, var(--telegram-safe-area-right)) max(6px, var(--telegram-safe-area-bottom)) max(14px, var(--telegram-safe-area-left));
+  border-top: 1px solid color-mix(in srgb, var(--telegram-text-color) 10%, transparent);
   background: color-mix(in srgb, var(--telegram-button-color) 11%, transparent);
   color: var(--telegram-text-color);
-  font-size: 0.9rem;
-  line-height: 1.35;
+  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .status-dot {
   width: 9px;
   height: 9px;
   flex: 0 0 auto;
-  margin-top: 0.2rem;
   border-radius: 999px;
   background: var(--telegram-button-color);
 }
@@ -101,4 +101,45 @@ h1 {
 
 .status.error .status-dot {
   background: #b91c1c;
+}
+
+.draft-preview {
+  width: 100%;
+}
+
+.draft-meta {
+  display: flex;
+  gap: 8px;
+  color: var(--telegram-hint-color);
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+
+.draft-meta span + span::before {
+  margin-right: 8px;
+  content: "·";
+}
+
+.draft-preview h2 {
+  margin: 14px 0 18px;
+  font-size: 1.25rem;
+}
+
+.tiptap-preview {
+  width: 100%;
+  min-height: 3rem;
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.tiptap-preview .tiptap {
+  outline: none;
+}
+
+.tiptap-preview p {
+  margin: 0 0 0.9rem;
+}
+
+.tiptap-preview p:last-child {
+  margin-bottom: 0;
 }

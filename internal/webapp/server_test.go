@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"tourplannerbot/internal/buildinfo"
+	"tourplannerbot/internal/database"
+	"tourplannerbot/internal/models"
 )
 
 var testBuildInformation = buildinfo.Information{
@@ -32,6 +34,8 @@ type readinessCheckerFunc func(applicationContext context.Context) error
 
 type allowedUserAuthorizerFunc func(applicationContext context.Context, telegramUserID int64) (bool, error)
 
+type draftReaderFunc func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
+
 // Check calls the function supplied by the test.
 func (function readinessCheckerFunc) Check(applicationContext context.Context) error {
 	return function(applicationContext)
@@ -42,10 +46,15 @@ func (function allowedUserAuthorizerFunc) IsAllowed(applicationContext context.C
 	return function(applicationContext, telegramUserID)
 }
 
+// FindAuthorizedDraft calls the function supplied by the test.
+func (function draftReaderFunc) FindAuthorizedDraft(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error) {
+	return function(applicationContext, draftID, telegramUserID)
+}
+
 // newTestServer creates an Echo server without writing request logs in test output.
 func newTestServer(readinessChecker ReadinessChecker) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	return NewServer(logger, readinessChecker, testBuildInformation, nil)
+	return NewServer(logger, readinessChecker, testBuildInformation, nil, nil)
 }
 
 // newTestSessionAuthenticator creates an authenticator with stable time for HTTP tests.
@@ -134,7 +143,7 @@ func TestServerLogsEachRequest(t *testing.T) {
 		return nil
 	}), testBuildInformation, newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
 		return true, nil
-	})))
+	})), nil)
 	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	responseRecorder := httptest.NewRecorder()
 
@@ -153,7 +162,7 @@ func TestMiniAppSessionHandshakeValidatesTelegramAndSetsSessionCookie(t *testing
 		return telegramUserID == 42, nil
 	}))
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator)
+	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator, nil)
 	initData := signedTestInitData(t, TelegramUser{ID: 42, FirstName: "Diana", Username: "diana"}, time.Date(2026, time.September, 20, 11, 59, 0, 0, time.UTC))
 	request := httptest.NewRequest(http.MethodPost, "/api/miniapp/session", strings.NewReader(`{"init_data":`+jsonQuote(initData)+`}`))
 	request.Header.Set("Content-Type", "application/json")
@@ -209,7 +218,7 @@ func TestMiniAppSessionHandshakeRejectsInvalidExpiredAndUnauthorizedRequests(t *
 				return testCase.allowed, nil
 			}))
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator)
+			server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator, nil)
 			request := httptest.NewRequest(http.MethodPost, "/api/miniapp/session", strings.NewReader(`{"init_data":`+jsonQuote(testCase.initData)+`}`))
 			request.Header.Set("Content-Type", "application/json")
 			responseRecorder := httptest.NewRecorder()
@@ -220,6 +229,59 @@ func TestMiniAppSessionHandshakeRejectsInvalidExpiredAndUnauthorizedRequests(t *
 				t.Errorf("POST /api/miniapp/session status = %d, want %d; body = %s", responseRecorder.Code, testCase.wantStatus, responseRecorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestDraftAPIRequiresSessionAndDoesNotLeakUnauthorizedDrafts(t *testing.T) {
+	sessionAuthenticator := newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
+		return telegramUserID == 42, nil
+	}))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	draftID := "0193a67a-4ae4-4e2c-9e94-537889065d11"
+	server := NewServer(logger, readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator, draftReaderFunc(func(applicationContext context.Context, requestedDraftID string, telegramUserID int64) (*models.Draft, error) {
+		if requestedDraftID != draftID || telegramUserID != 42 {
+			return nil, database.ErrDraftNotFound
+		}
+		return &models.Draft{
+			ID:          draftID,
+			Kind:        models.DraftKindWhatsApp,
+			ContentJSON: json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Private draft"}]}]}`),
+			BodyText:    "Private draft",
+			Revision:    1,
+		}, nil
+	}))
+
+	unauthenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/drafts/"+draftID, nil)
+	unauthenticatedResponseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(unauthenticatedResponseRecorder, unauthenticatedRequest)
+	if unauthenticatedResponseRecorder.Code != http.StatusUnauthorized {
+		t.Errorf("GET draft without session status = %d, want %d", unauthenticatedResponseRecorder.Code, http.StatusUnauthorized)
+	}
+
+	responseRecorder := httptest.NewRecorder()
+	if err := sessionAuthenticator.setSessionCookie(responseRecorder, 42); err != nil {
+		t.Fatalf("setSessionCookie returned error: %v", err)
+	}
+	authenticatedRequest := httptest.NewRequest(http.MethodGet, "/api/drafts/"+draftID, nil)
+	authenticatedRequest.AddCookie(responseRecorder.Result().Cookies()[0])
+	authenticatedResponseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(authenticatedResponseRecorder, authenticatedRequest)
+	if authenticatedResponseRecorder.Code != http.StatusOK {
+		t.Fatalf("GET authorized draft status = %d, want %d; body = %s", authenticatedResponseRecorder.Code, http.StatusOK, authenticatedResponseRecorder.Body.String())
+	}
+	if !strings.Contains(authenticatedResponseRecorder.Body.String(), `"text":"Private draft"`) {
+		t.Errorf("GET authorized draft body = %q, want Tiptap document", authenticatedResponseRecorder.Body.String())
+	}
+
+	notFoundRequest := httptest.NewRequest(http.MethodGet, "/api/drafts/0193a67a-4ae4-4e2c-9e94-537889065d12", nil)
+	notFoundRequest.AddCookie(responseRecorder.Result().Cookies()[0])
+	notFoundResponseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(notFoundResponseRecorder, notFoundRequest)
+	if notFoundResponseRecorder.Code != http.StatusNotFound {
+		t.Errorf("GET unauthorized draft status = %d, want %d", notFoundResponseRecorder.Code, http.StatusNotFound)
+	}
+	if strings.Contains(notFoundResponseRecorder.Body.String(), "Private draft") {
+		t.Errorf("GET unauthorized draft body leaked content: %q", notFoundResponseRecorder.Body.String())
 	}
 }
 

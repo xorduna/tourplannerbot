@@ -64,6 +64,7 @@ func run() error {
 
 	databaseReadiness := database.NewReadiness()
 	allowedUserAuthorizer := webapp.NewGORMAllowedUserAuthorizer()
+	draftReader := webapp.NewGORMDraftReader()
 	sessionAuthenticator, err := webapp.NewSessionAuthenticator(webapp.SessionConfig{
 		TelegramBotToken:     applicationConfig.TelegramBotToken,
 		AuthenticationMaxAge: applicationConfig.TelegramWebAppAuthMaxAge,
@@ -71,7 +72,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize Mini App authentication: %w", err)
 	}
-	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation, sessionAuthenticator)
+	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation, sessionAuthenticator, draftReader)
 	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()
@@ -109,6 +110,7 @@ func run() error {
 	}
 	databaseReadiness.SetConnection(sqlDatabaseConnection)
 	allowedUserAuthorizer.SetDatabaseConnection(databaseConnection)
+	draftReader.SetDatabaseConnection(databaseConnection)
 	defer sqlDatabaseConnection.Close()
 
 	llmClient := llm.NewClient(

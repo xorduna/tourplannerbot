@@ -30,7 +30,7 @@ internal/
   database/database.go        # GORM PostgreSQL connection
   webapp/                     # Echo server and embedded Mini App assets
   llm/client.go               # Official OpenAI Go SDK Responses API client
-  models/                      # GORM models for authorized users and messages
+  models/                      # GORM models for authorized users, messages, and drafts
   telegram/handler.go         # Message routing and persisted LLM/tool loop
   telegram/progress.go        # Typing and editable response progress
   tools/
@@ -94,6 +94,24 @@ the authenticated Telegram identity.
 Inline `web_app` buttons are limited by Telegram to private chats with the bot.
 The eventual group flow will use Telegram's `startapp` launch alternative;
 `/editor` explains this limitation instead of showing an unusable button.
+
+### Temporary draft commands
+
+Until the Mini App can display and edit a draft, authorized users can exercise
+the persistence flow directly in Telegram:
+
+```text
+/draft create whatsapp Bon dia, et va bé parlar demà?
+/draft create email Hola, gràcies pel teu missatge.
+/draft active
+```
+
+`create` creates a real revision-one draft for the current chat and topic, and
+supersedes the previous active draft in that conversation. `active` displays
+only the calling user's active draft. These commands do not invoke the LLM and
+will be replaced by the normal drafting flow in later slices. In a private chat
+they also attach an **Open editor** button that opens that exact draft in
+read-only mode.
 
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of

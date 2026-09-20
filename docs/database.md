@@ -4,6 +4,9 @@ description: PostgreSQL connection, GORM persistence, Goose migration, and Digit
 methods:
   - buildinfo.Current: Returns the version and UTC build time embedded in the binary.
   - database.Open: Opens and validates the GORM PostgreSQL connection.
+  - database.CreateDraft: Transactionally supersedes and creates a conversation draft.
+  - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
+  - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
@@ -11,10 +14,14 @@ depends_on:
   - migrations/00001_create_allowed_users.sql
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
+  - migrations/00005_create_drafts.sql
   - internal/database/database.go
+  - internal/database/drafts.go
+  - internal/webapp/drafts.go
   - internal/database/readiness.go
   - internal/models/allowed_user.go
   - internal/models/message.go
+  - internal/models/draft.go
   - .github/workflows/deploy.yml
 used_by:
   - cmd/bot/main.go
@@ -30,6 +37,19 @@ The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the Te
 The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group. Migration `00004` adds `tool` and `reasoning` roles plus the call ID, tool name, and JSON arguments needed to reconstruct stateless Responses API function calls, encrypted reasoning state, and outputs.
 
 The `llm_requests` table records each LLM attempt, including failures. It stores provider/model, duration, token usage, an optional immutable cost estimate, and a link to the source user message; it intentionally does not duplicate prompt or response text. Use its timestamp, model, and conversation indexes for consumption reports.
+
+The `drafts` table is the canonical store for editable text. A draft has a
+public random UUID, Tiptap JSON plus its plain-text projection, and a revision
+counter. `database.CreateDraft` holds a transaction-scoped PostgreSQL advisory
+lock for the chat/topic, supersedes any active draft, and creates the new one at
+revision 1. The partial unique index independently guarantees that a
+conversation cannot retain two active drafts. This is intentionally a small
+persistence helper, not a separate domain layer.
+
+The read-only Mini App endpoint authorizes its signed Telegram session before
+loading a draft. It compares the authenticated Telegram user with
+`owner_telegram_id`, returning the same `404` for missing and unauthorized
+UUIDs so one user cannot infer the existence of another user's content.
 
 ## Local Development
 
