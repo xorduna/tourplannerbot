@@ -13,6 +13,8 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("ACCESS_PIN", "1234")
+	t.Setenv("PORT", "")
+	t.Setenv("APP_BASE_URL", "")
 
 	tariffsDirectory := t.TempDir()
 	t.Setenv("LLM_TARIFFS_DIR", tariffsDirectory)
@@ -41,6 +43,12 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.LLMHistoryMaxMessages != 20 {
 		t.Errorf("LLMHistoryMaxMessages = %d, want 20", applicationConfig.LLMHistoryMaxMessages)
 	}
+	if applicationConfig.Port != 8080 {
+		t.Errorf("Port = %d, want 8080", applicationConfig.Port)
+	}
+	if applicationConfig.AppBaseURL != "" {
+		t.Errorf("AppBaseURL = %q, want empty", applicationConfig.AppBaseURL)
+	}
 	if applicationConfig.LLMProvider != "openai" {
 		t.Errorf("LLMProvider = %q, want openai", applicationConfig.LLMProvider)
 	}
@@ -55,6 +63,52 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	}
 	if applicationConfig.LLMPricing.InputMicroUSDPerMillion != 5_000_000 || applicationConfig.LLMPricing.Version != "2026-09-18-openai" {
 		t.Errorf("LLMPricing = %#v", applicationConfig.LLMPricing)
+	}
+}
+
+func TestLoadFromEnvironmentLoadsWebServerSettings(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("PORT", "9090")
+	t.Setenv("APP_BASE_URL", "https://example.ngrok.app/")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Port != 9090 {
+		t.Errorf("Port = %d, want 9090", applicationConfig.Port)
+	}
+	if applicationConfig.AppBaseURL != "https://example.ngrok.app" {
+		t.Errorf("AppBaseURL = %q, want https://example.ngrok.app", applicationConfig.AppBaseURL)
+	}
+}
+
+func TestLoadFromEnvironmentRejectsInvalidWebServerSettings(t *testing.T) {
+	testCases := []struct {
+		name       string
+		port       string
+		appBaseURL string
+	}{
+		{name: "port below range", port: "0"},
+		{name: "port above range", port: "65536"},
+		{name: "non-numeric port", port: "http"},
+		{name: "invalid base URL", appBaseURL: "example.com"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			if testCase.port != "" {
+				t.Setenv("PORT", testCase.port)
+			}
+			if testCase.appBaseURL != "" {
+				t.Setenv("APP_BASE_URL", testCase.appBaseURL)
+			}
+
+			if _, err := LoadFromEnvironment(); err == nil {
+				t.Fatal("LoadFromEnvironment returned nil error for invalid web server settings")
+			}
+		})
 	}
 }
 

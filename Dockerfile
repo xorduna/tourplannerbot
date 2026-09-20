@@ -11,4 +11,5 @@ WORKDIR /app
 COPY --from=builder /app/bot .
 COPY prompts/ ./prompts/
 COPY tariffs/ ./tariffs/
+EXPOSE 8080
 CMD ["./bot"]

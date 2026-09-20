@@ -22,6 +22,7 @@ func Open(ctx context.Context, databaseURL string) (*gorm.DB, error) {
 	}
 
 	if err := sqlDatabaseConnection.PingContext(ctx); err != nil {
+		_ = sqlDatabaseConnection.Close()
 		return nil, fmt.Errorf("ping PostgreSQL database: %w", err)
 	}
 

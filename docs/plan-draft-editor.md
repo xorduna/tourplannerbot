@@ -1,3 +1,16 @@
+---
+title: Collaborative Draft Editor Plan
+description: Architecture and incremental implementation plan for an authenticated Telegram Mini App draft editor.
+methods: []
+depends_on:
+  - README.md
+  - .env.example
+  - .do/app.yaml
+  - internal/config/config.go
+used_by:
+  - cmd/bot/main.go
+---
+
 # Plan: collaborative draft editor
 
 ## Goal

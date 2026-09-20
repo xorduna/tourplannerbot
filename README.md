@@ -16,6 +16,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Native Telegram Rich Message tables with a readable list fallback
 - Structured JSON logging via `slog`
 - Graceful shutdown on SIGTERM
+- Echo HTTP server with liveness (`/healthz`) and PostgreSQL readiness (`/readyz`) checks
 
 The bot stores authorized user messages, generated replies, tool calls, and tool results, then sends the newest items from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
@@ -26,6 +27,7 @@ cmd/bot/main.go               # Entrypoint
 internal/
   config/config.go            # Env var loading
   database/database.go        # GORM PostgreSQL connection
+  webapp/server.go            # Health and readiness HTTP endpoints
   llm/client.go               # Official OpenAI Go SDK Responses API client
   models/                      # GORM models for authorized users and messages
   telegram/handler.go         # Message routing and persisted LLM/tool loop
@@ -58,10 +60,22 @@ docker-compose.yml            # Local dev: bot + postgres
    docker compose up --build
    ```
 
-3. Or run directly (requires a running Postgres):
+3. Or run directly (the process keeps `/healthz` available while PostgreSQL reconnects):
    ```bash
-   go run ./cmd/bot
+   make run
    ```
+
+### HTTPS tunnel for Telegram Mini Apps
+
+The health endpoint can be exposed through a temporary HTTPS tunnel before the
+Mini App UI is added. Start the bot, then in another terminal run:
+
+```bash
+ngrok http 8080
+```
+
+Use the generated HTTPS address as `APP_BASE_URL` when a later Mini App slice
+needs to generate Telegram links. Until then, `APP_BASE_URL` may be unset.
 
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of
@@ -90,6 +104,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `DATABASE_URL` | yes | — | PostgreSQL connection URL |
 | `OPENAI_API_KEY` | yes | — | OpenAI (or compatible) API key |
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
+| `PORT` | no | `8080` | HTTP port; production listens on the platform-provided value |
+| `APP_BASE_URL` | no | — | Public HTTPS URL, such as the final service domain or a temporary tunnel |
 | `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
 | `LLM_PROVIDER` | no | `openai` | Provider label written to LLM audit records |
@@ -109,7 +125,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 
 ## Deployment (DigitalOcean App Platform)
 
-- Component type: **Worker** (polling, no inbound HTTP)
+- Component type: **Service**, listening on `0.0.0.0:$PORT`; it still runs one Telegram polling consumer
+- `GET /healthz` is used for platform health and liveness checks; `GET /readyz` returns `503` until PostgreSQL is reachable
 - Set all required env vars as secrets in the DO console
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
-- The GitHub workflow runs migrations in a dedicated job before deploying the worker. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, and, once known, `APP_BASE_URL` as GitHub Actions variables; set `ACCESS_PIN` as a GitHub Actions secret.
