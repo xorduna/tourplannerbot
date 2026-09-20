@@ -51,7 +51,7 @@ The `migrate` GitHub Actions job runs after the image build and before the servi
 
 These are separate workflow steps on the same runner, so the migration error and firewall cleanup are visible independently in GitHub Actions. The workflow delegates the shell logic to the versioned scripts in `scripts/`.
 
-The `deploy` job injects the `DATABASE_URL` GitHub Actions secret as a runtime secret. It uses `doctl apps update --wait`, so the GitHub Actions job waits for App Platform to finish the rollout and reports a failed deployment as a failed workflow. The App Platform application must be authorized as a database trusted source in the DigitalOcean console before deployment. The service's `/healthz` endpoint is used for both deployment health and liveness checks; `/readyz` checks the database without causing a restart while it is temporarily unavailable.
+The `deploy` job injects the `DATABASE_URL` GitHub Actions secret as a runtime secret. It first verifies that the DigitalOcean token can read the configured app, then uses `doctl apps update --wait`, so the GitHub Actions job waits for App Platform to finish the rollout and reports a failed deployment as a failed workflow. The App Platform application must be authorized as a database trusted source in the DigitalOcean console before deployment. The service's `/healthz` endpoint is used for both deployment health and liveness checks; `/readyz` checks the database without causing a restart while it is temporarily unavailable.
 
 Before enabling this flow, configure these GitHub Actions values:
 
