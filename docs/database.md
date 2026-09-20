@@ -7,6 +7,7 @@ methods:
   - database.CreateDraft: Transactionally supersedes and creates a conversation draft.
   - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
   - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
+  - database.UpdateDraft: Atomically saves a validated draft at its expected revision.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
@@ -50,6 +51,11 @@ The read-only Mini App endpoint authorizes its signed Telegram session before
 loading a draft. It compares the authenticated Telegram user with
 `owner_telegram_id`, returning the same `404` for missing and unauthorized
 UUIDs so one user cannot infer the existence of another user's content.
+
+The Mini App `PATCH /api/drafts/{id}` endpoint validates the supported Tiptap
+document nodes and marks, derives `body_text` on the server, and performs an
+owner-scoped update only when `expected_revision` matches. A stale editor gets
+`409 Conflict` plus the current draft, rather than silently overwriting it.
 
 ## Local Development
 

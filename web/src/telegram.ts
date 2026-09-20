@@ -8,6 +8,8 @@ export interface TelegramSafeAreaInset {
 export interface TelegramWebApp {
   colorScheme?: "dark" | "light";
   contentSafeAreaInset?: TelegramSafeAreaInset;
+  disableClosingConfirmation?: () => void;
+  enableClosingConfirmation?: () => void;
   expand: () => void;
   initData: string;
   ready: () => void;

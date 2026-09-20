@@ -348,6 +348,12 @@ read-only. The API returns the same `404` for missing and unauthorized drafts.
 - An update with an old revision does not overwrite the new one.
 - Invalid JSON or disallowed nodes are rejected.
 
+**Implementation note:** the Mini App now exposes the Tiptap toolbar for bold,
+italic, bulleted/numbered lists, undo, and redo. It saves with the expected
+revision and has dirty, saving, saved, conflict, and error states. Browser and
+Telegram close confirmations protect unsaved changes. The server accepts only
+the corresponding closed Tiptap schema and derives the plain-text projection.
+
 ### Slice 7 — Draft creation by the agent
 
 **Demonstrable result:** “Write me a WhatsApp message…” creates the draft in the database, and the bot responds with a preview and an **Edit** button.

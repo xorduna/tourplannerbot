@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,6 +17,17 @@ import (
 // ErrDraftNotFound indicates that no draft exists for the requested identifier.
 var ErrDraftNotFound = errors.New("draft not found")
 
+// DraftRevisionConflictError contains the current draft after an update used a
+// stale revision. Callers can return it to the editor without losing changes.
+type DraftRevisionConflictError struct {
+	CurrentDraft *models.Draft
+}
+
+// Error returns the stable revision-conflict message.
+func (draftRevisionConflictError *DraftRevisionConflictError) Error() string {
+	return "draft revision conflict"
+}
+
 // CreateDraftInput contains the trusted conversation and owner values used to
 // create a draft. Callers never supply an ID, status, revision, or body JSON.
 type CreateDraftInput struct {
@@ -25,6 +37,17 @@ type CreateDraftInput struct {
 	Kind            models.DraftKind
 	Subject         *string
 	BodyText        string
+}
+
+// UpdateDraftInput contains the canonical validated values for an optimistic
+// draft update. The editor's body text is always projected server-side.
+type UpdateDraftInput struct {
+	ID               string
+	OwnerTelegramID  int64
+	ExpectedRevision int
+	Subject          *string
+	ContentJSON      json.RawMessage
+	BodyText         string
 }
 
 // CreateDraft supersedes the active draft for a conversation and creates a new
@@ -120,6 +143,53 @@ func FindActiveDraft(applicationContext context.Context, databaseConnection *gor
 		return nil, fmt.Errorf("query active draft: %w", err)
 	}
 	return &draft, nil
+}
+
+// UpdateDraft atomically replaces a draft only if its owner and expected
+// revision still match. A stale editor receives DraftRevisionConflictError with
+// the current authorized version instead of overwriting it.
+func UpdateDraft(applicationContext context.Context, databaseConnection *gorm.DB, updateDraftInput UpdateDraftInput) (*models.Draft, error) {
+	if databaseConnection == nil {
+		return nil, errors.New("database connection is required")
+	}
+	if updateDraftInput.ID == "" || updateDraftInput.OwnerTelegramID <= 0 || updateDraftInput.ExpectedRevision < 1 {
+		return nil, errors.New("valid draft ID, owner Telegram ID, and expected revision are required")
+	}
+
+	var updatedDraft models.Draft
+	err := databaseConnection.WithContext(applicationContext).Transaction(func(transaction *gorm.DB) error {
+		updateResult := transaction.Model(&models.Draft{}).
+			Where("id = ? AND owner_telegram_id = ? AND revision = ?", updateDraftInput.ID, updateDraftInput.OwnerTelegramID, updateDraftInput.ExpectedRevision).
+			Updates(map[string]any{
+				"subject":      updateDraftInput.Subject,
+				"content_json": gorm.Expr("?::jsonb", string(updateDraftInput.ContentJSON)),
+				"body_text":    updateDraftInput.BodyText,
+				"revision":     gorm.Expr("revision + 1"),
+				"updated_at":   gorm.Expr("CURRENT_TIMESTAMP"),
+			})
+		if updateResult.Error != nil {
+			return fmt.Errorf("update draft: %w", updateResult.Error)
+		}
+		if updateResult.RowsAffected == 1 {
+			if err := transaction.First(&updatedDraft, "id = ?", updateDraftInput.ID).Error; err != nil {
+				return fmt.Errorf("read updated draft: %w", err)
+			}
+			return nil
+		}
+
+		currentDraft, err := FindDraftByID(applicationContext, transaction, updateDraftInput.ID)
+		if errors.Is(err, ErrDraftNotFound) || (err == nil && currentDraft.OwnerTelegramID != updateDraftInput.OwnerTelegramID) {
+			return ErrDraftNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return &DraftRevisionConflictError{CurrentDraft: currentDraft}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &updatedDraft, nil
 }
 
 // lockDraftConversation serializes draft creation for one chat and thread for

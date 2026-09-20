@@ -86,6 +86,34 @@ func TestDraftRepositoryCreatesSupersedesAndSerializes(t *testing.T) {
 	if _, err := FindActiveDraft(context.Background(), databaseConnection, 100, 0, 99); !errors.Is(err, ErrDraftNotFound) {
 		t.Errorf("FindActiveDraft for another owner error = %v, want ErrDraftNotFound", err)
 	}
+	updatedContentJSON, err := models.NewTiptapDocumentFromPlainText("Text actualitzat")
+	if err != nil {
+		t.Fatalf("create updated content: %v", err)
+	}
+	updatedDraft, err := UpdateDraft(context.Background(), databaseConnection, UpdateDraftInput{
+		ID:               secondDraft.ID,
+		OwnerTelegramID:  42,
+		ExpectedRevision: 1,
+		ContentJSON:      updatedContentJSON,
+		BodyText:         "Text actualitzat",
+	})
+	if err != nil {
+		t.Fatalf("UpdateDraft returned error: %v", err)
+	}
+	if updatedDraft.Revision != 2 || updatedDraft.BodyText != "Text actualitzat" {
+		t.Errorf("updated draft = %#v, want revision two and updated body", updatedDraft)
+	}
+	_, staleUpdateError := UpdateDraft(context.Background(), databaseConnection, UpdateDraftInput{
+		ID:               secondDraft.ID,
+		OwnerTelegramID:  42,
+		ExpectedRevision: 1,
+		ContentJSON:      updatedContentJSON,
+		BodyText:         "Stale overwrite",
+	})
+	var revisionConflictError *DraftRevisionConflictError
+	if !errors.As(staleUpdateError, &revisionConflictError) || revisionConflictError.CurrentDraft.Revision != 2 || revisionConflictError.CurrentDraft.BodyText != "Text actualitzat" {
+		t.Errorf("stale UpdateDraft error = %#v, want revision conflict with current draft", staleUpdateError)
+	}
 	duplicateDraftID, err := newDraftUUID()
 	if err != nil {
 		t.Fatalf("generate duplicate draft ID: %v", err)

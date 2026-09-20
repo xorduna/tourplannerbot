@@ -34,6 +34,7 @@ methods:
   - database.CreateDraft: Transactionally supersedes and creates a conversation draft.
   - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
   - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
+  - database.UpdateDraft: Atomically saves a validated draft at its expected revision.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:

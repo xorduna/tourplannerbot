@@ -52,6 +52,14 @@ function applyTelegramAppearance(telegramWebApp: TelegramWebApp | undefined): vo
   setSafeAreaVariables(telegramWebApp?.contentSafeAreaInset, "telegram-content-safe-area");
 }
 
+function draftKindIcon(kind: Draft["kind"]): string {
+  switch (kind) {
+    case "email": return "✉";
+    case "whatsapp": return "💬";
+    case "generic": return "📝";
+  }
+}
+
 function App() {
   const telegramWebApp = getTelegramWebApp();
   const isInsideTelegram = Boolean(telegramWebApp?.initData);
@@ -61,19 +69,53 @@ function App() {
   const [draft, setDraft] = createSignal<Draft>();
   const [draftError, setDraftError] = createSignal<string>();
   const [editorElement, setEditorElement] = createSignal<HTMLDivElement>();
+  const [draftSubject, setDraftSubject] = createSignal("");
+  const [isDirty, setIsDirty] = createSignal(false);
+  const [isSaving, setIsSaving] = createSignal(false);
+  const [saveError, setSaveError] = createSignal<string>();
+  const [hasSaved, setHasSaved] = createSignal(false);
+  let editor: Editor | undefined;
 
   createEffect(() => {
     const currentDraft = draft();
     const currentEditorElement = editorElement();
     if (!currentDraft || !currentEditorElement) return;
 
-    const readOnlyEditor = new Editor({
+    const editableEditor = new Editor({
       element: currentEditorElement,
-      editable: false,
       extensions: [StarterKit],
       content: currentDraft.content,
+      onUpdate: () => {
+        setIsDirty(true);
+        setHasSaved(false);
+        setSaveError(undefined);
+      },
     });
-    onCleanup(() => readOnlyEditor.destroy());
+    editor = editableEditor;
+    onCleanup(() => {
+      if (editor === editableEditor) editor = undefined;
+      editableEditor.destroy();
+    });
+  });
+
+  createEffect(() => {
+    if (!isDirty()) return;
+    const preventAccidentalClose = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", preventAccidentalClose);
+    onCleanup(() => window.removeEventListener("beforeunload", preventAccidentalClose));
+  });
+
+  createEffect(() => {
+    if (!telegramWebApp?.enableClosingConfirmation || !telegramWebApp?.disableClosingConfirmation) return;
+    if (isDirty()) {
+      telegramWebApp.enableClosingConfirmation();
+      onCleanup(() => telegramWebApp.disableClosingConfirmation?.());
+    } else {
+      telegramWebApp.disableClosingConfirmation();
+    }
   });
 
   onMount(() => {
@@ -121,10 +163,60 @@ function App() {
       if (!draftResponse.ok) {
         throw new Error("The draft could not be loaded. Please try again.");
       }
-      setDraft((await draftResponse.json()) as Draft);
+      loadDraft((await draftResponse.json()) as Draft);
     } catch (error: unknown) {
       setAuthenticationError(error instanceof Error ? error.message : "Telegram authentication failed.");
     }
+  }
+
+  function loadDraft(loadedDraft: Draft): void {
+    setDraft(loadedDraft);
+    setDraftSubject(loadedDraft.subject ?? "");
+    setIsDirty(false);
+    setHasSaved(false);
+  }
+
+  async function saveDraft(): Promise<void> {
+    const currentDraft = draft();
+    if (!currentDraft || !editor || isSaving() || !isDirty()) return;
+
+    setIsSaving(true);
+    setSaveError(undefined);
+    setHasSaved(false);
+    try {
+      const response = await fetch(`/api/drafts/${encodeURIComponent(currentDraft.id)}`, {
+        method: "PATCH",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expected_revision: currentDraft.revision,
+          subject: draftSubject().trim() || null,
+          content: editor.getJSON(),
+        }),
+      });
+      if (response.status === 409) {
+        const conflict = (await response.json()) as { current: Draft };
+        loadDraft(conflict.current);
+        setSaveError("A newer version was saved elsewhere. The current version has been loaded.");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("Your changes could not be saved. Please try again.");
+      }
+      loadDraft((await response.json()) as Draft);
+      setHasSaved(true);
+    } catch (error: unknown) {
+      setSaveError(error instanceof Error ? error.message : "Your changes could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  function updateSubject(subject: string): void {
+    setDraftSubject(subject);
+    setIsDirty(true);
+    setHasSaved(false);
+    setSaveError(undefined);
   }
 
   const identityLabel = () => {
@@ -138,26 +230,46 @@ function App() {
     <main class="shell" style={{ "min-height": `${viewportHeight()}px` }}>
       <section class="workspace" aria-labelledby="miniapp-title">
         <header class="workspace-header">
-          <p class="eyebrow">TOUR PLANNER</p>
-          <h1 id="miniapp-title">{draft() ? "Draft preview" : "Mini App connected"}</h1>
-          <p class="description">{draft() ? "Read-only preview" : "Your draft workspace will appear here."}</p>
+          <div class="title-row">
+            <h1 id="miniapp-title">
+              <Show when={draft()}>{(loadedDraft) => <span class="draft-kind-icon" aria-hidden="true">{draftKindIcon(loadedDraft().kind)}</span>}</Show>
+              {draft() ? "Draft editor" : "Mini App connected"}
+            </h1>
+            <Show when={draft()}>
+              {(loadedDraft) => (
+                <div class="draft-meta">
+                  <span>{loadedDraft().kind}</span>
+                  <span>Revision {loadedDraft().revision}</span>
+                </div>
+              )}
+            </Show>
+          </div>
         </header>
         <Show when={draft()}>
           {(loadedDraft) => (
-            <article class="draft-preview" aria-label="Draft preview">
-              <div class="draft-meta">
-                <span>{loadedDraft().kind}</span>
-                <span>Revision {loadedDraft().revision}</span>
+            <article class="draft-editor" aria-label="Draft editor">
+              <div class="subject-field">
+                <label for="draft-subject">Subject</label>
+                <input id="draft-subject" class="subject-input" aria-label="Draft subject" maxlength="200" placeholder="Subject" value={draftSubject()} onInput={(event) => updateSubject(event.currentTarget.value)} />
               </div>
-              <Show when={loadedDraft().subject}>
-                <h2>{loadedDraft().subject}</h2>
-              </Show>
-              <div class="tiptap-preview" ref={setEditorElement} />
+              <div class="editor-toolbar" aria-label="Formatting controls">
+                <button type="button" title="Bold" onClick={() => editor?.chain().focus().toggleBold().run()}><strong>B</strong></button>
+                <button type="button" title="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()}><em>I</em></button>
+                <button type="button" title="Bulleted list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>• List</button>
+                <button type="button" title="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1. List</button>
+                <span class="toolbar-spacer" />
+                <button type="button" title="Undo" aria-label="Undo" onClick={() => editor?.chain().focus().undo().run()}>↶</button>
+                <button type="button" title="Redo" aria-label="Redo" onClick={() => editor?.chain().focus().redo().run()}>↷</button>
+                <button class="toolbar-save-button" type="button" title="Save" aria-label="Save" disabled={!isDirty() || isSaving()} onClick={() => void saveDraft()}>
+                  {isSaving() ? "…" : "💾"}
+                </button>
+              </div>
+              <div class="tiptap-editor" ref={setEditorElement} />
             </article>
           )}
         </Show>
       </section>
-      <footer class="status" classList={{ development: !isInsideTelegram, error: Boolean(authenticationError() || draftError()) }}>
+      <footer class="status" classList={{ development: !isInsideTelegram, error: Boolean(authenticationError() || draftError() || saveError()) }}>
         <span class="status-dot" aria-hidden="true" />
         <span>
           {!isInsideTelegram && "Development mode — opened outside Telegram"}
@@ -165,7 +277,10 @@ function App() {
           {authenticatedUser() && !draft() && !draftError() && `Authenticated as ${identityLabel()}`}
           {draftError()}
           {authenticationError()}
-          {authenticatedUser() && draft() && !draftError() && !authenticationError() && `Authenticated as ${identityLabel()} · Read-only · Revision ${draft()!.revision}`}
+          {saveError()}
+          {authenticatedUser() && draft() && !draftError() && !authenticationError() && !saveError() && !isSaving() && !hasSaved() && (isDirty() ? "Unsaved changes" : `Authenticated as ${identityLabel()} · Revision ${draft()!.revision}`)}
+          {isSaving() && "Saving changes…"}
+          {hasSaved() && "Saved"}
         </span>
       </footer>
     </main>

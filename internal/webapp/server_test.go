@@ -36,6 +36,11 @@ type allowedUserAuthorizerFunc func(applicationContext context.Context, telegram
 
 type draftReaderFunc func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
 
+type draftStoreStub struct {
+	findDraft   func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
+	updateDraft func(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error)
+}
+
 // Check calls the function supplied by the test.
 func (function readinessCheckerFunc) Check(applicationContext context.Context) error {
 	return function(applicationContext)
@@ -49,6 +54,21 @@ func (function allowedUserAuthorizerFunc) IsAllowed(applicationContext context.C
 // FindAuthorizedDraft calls the function supplied by the test.
 func (function draftReaderFunc) FindAuthorizedDraft(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error) {
 	return function(applicationContext, draftID, telegramUserID)
+}
+
+// UpdateAuthorizedDraft rejects writes in read-only draft-reader tests.
+func (function draftReaderFunc) UpdateAuthorizedDraft(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error) {
+	return nil, errors.New("draft updates are not configured for this test")
+}
+
+// FindAuthorizedDraft calls the draft-store function supplied by the test.
+func (draftStore draftStoreStub) FindAuthorizedDraft(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error) {
+	return draftStore.findDraft(applicationContext, draftID, telegramUserID)
+}
+
+// UpdateAuthorizedDraft calls the draft-store function supplied by the test.
+func (draftStore draftStoreStub) UpdateAuthorizedDraft(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error) {
+	return draftStore.updateDraft(applicationContext, updateDraftInput)
 }
 
 // newTestServer creates an Echo server without writing request logs in test output.
@@ -282,6 +302,61 @@ func TestDraftAPIRequiresSessionAndDoesNotLeakUnauthorizedDrafts(t *testing.T) {
 	}
 	if strings.Contains(notFoundResponseRecorder.Body.String(), "Private draft") {
 		t.Errorf("GET unauthorized draft body leaked content: %q", notFoundResponseRecorder.Body.String())
+	}
+}
+
+func TestDraftAPIUpdatesValidatedContentAndReturnsRevisionConflict(t *testing.T) {
+	sessionAuthenticator := newTestSessionAuthenticator(t, allowedUserAuthorizerFunc(func(applicationContext context.Context, telegramUserID int64) (bool, error) {
+		return telegramUserID == 42, nil
+	}))
+	draftID := "0193a67a-4ae4-4e2c-9e94-537889065d11"
+	updatedInput := database.UpdateDraftInput{}
+	server := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator, draftStoreStub{
+		findDraft: func(applicationContext context.Context, requestedDraftID string, telegramUserID int64) (*models.Draft, error) {
+			return nil, database.ErrDraftNotFound
+		},
+		updateDraft: func(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error) {
+			updatedInput = updateDraftInput
+			if updateDraftInput.ExpectedRevision == 1 {
+				return &models.Draft{ID: draftID, Kind: models.DraftKindGeneric, ContentJSON: updateDraftInput.ContentJSON, BodyText: updateDraftInput.BodyText, Revision: 2}, nil
+			}
+			return nil, &database.DraftRevisionConflictError{CurrentDraft: &models.Draft{ID: draftID, Kind: models.DraftKindGeneric, ContentJSON: json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Newer text"}]}]}`), BodyText: "Newer text", Revision: 3}}
+		},
+	})
+	cookieRecorder := httptest.NewRecorder()
+	if err := sessionAuthenticator.setSessionCookie(cookieRecorder, 42); err != nil {
+		t.Fatalf("set session cookie: %v", err)
+	}
+	sessionCookie := cookieRecorder.Result().Cookies()[0]
+	contentJSON := `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Updated text","marks":[{"type":"bold"}]}]}]}`
+	request := httptest.NewRequest(http.MethodPatch, "/api/drafts/"+draftID, strings.NewReader(`{"expected_revision":1,"subject":"A subject","content":`+contentJSON+`}`))
+	request.AddCookie(sessionCookie)
+	responseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(responseRecorder, request)
+	if responseRecorder.Code != http.StatusOK {
+		t.Fatalf("PATCH draft status = %d, want %d; body = %s", responseRecorder.Code, http.StatusOK, responseRecorder.Body.String())
+	}
+	if updatedInput.BodyText != "Updated text" || updatedInput.ExpectedRevision != 1 || updatedInput.OwnerTelegramID != 42 {
+		t.Errorf("UpdateAuthorizedDraft input = %#v, want server-projected text and authenticated owner", updatedInput)
+	}
+	if !strings.Contains(responseRecorder.Body.String(), `"revision":2`) {
+		t.Errorf("PATCH draft response = %q, want revision two", responseRecorder.Body.String())
+	}
+
+	conflictRequest := httptest.NewRequest(http.MethodPatch, "/api/drafts/"+draftID, strings.NewReader(`{"expected_revision":2,"content":`+contentJSON+`}`))
+	conflictRequest.AddCookie(sessionCookie)
+	conflictResponseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(conflictResponseRecorder, conflictRequest)
+	if conflictResponseRecorder.Code != http.StatusConflict || !strings.Contains(conflictResponseRecorder.Body.String(), `"revision":3`) {
+		t.Errorf("PATCH stale draft response = %d %q, want 409 with current revision", conflictResponseRecorder.Code, conflictResponseRecorder.Body.String())
+	}
+
+	invalidContentRequest := httptest.NewRequest(http.MethodPatch, "/api/drafts/"+draftID, strings.NewReader(`{"expected_revision":3,"content":{"type":"doc","content":[{"type":"heading"}]}}`))
+	invalidContentRequest.AddCookie(sessionCookie)
+	invalidContentResponseRecorder := httptest.NewRecorder()
+	server.ServeHTTP(invalidContentResponseRecorder, invalidContentRequest)
+	if invalidContentResponseRecorder.Code != http.StatusBadRequest {
+		t.Errorf("PATCH invalid content status = %d, want %d", invalidContentResponseRecorder.Code, http.StatusBadRequest)
 	}
 }
 

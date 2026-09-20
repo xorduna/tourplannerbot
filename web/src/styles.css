@@ -40,33 +40,37 @@ textarea {
 .workspace {
   width: 100%;
   flex: 1 1 auto;
-  padding: max(24px, var(--telegram-safe-area-top)) max(20px, var(--telegram-safe-area-right)) 24px max(20px, var(--telegram-safe-area-left));
+  display: flex;
+  flex-direction: column;
+  padding: max(16px, var(--telegram-safe-area-top)) max(14px, var(--telegram-safe-area-right)) 12px max(14px, var(--telegram-safe-area-left));
 }
 
 .workspace-header {
-  margin-bottom: 28px;
+  margin-bottom: 14px;
 }
 
-.eyebrow {
-  margin: 0 0 16px;
-  color: var(--telegram-button-color);
-  font-size: 0.72rem;
-  font-weight: 750;
-  letter-spacing: 0.14em;
+.title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(2rem, 10vw, 3rem);
-  line-height: 1.03;
-  letter-spacing: -0.05em;
+  color: var(--telegram-text-color);
+  font-size: 0.82rem;
+  line-height: 1.2;
+  letter-spacing: 0;
+  font-weight: 700;
 }
 
-.description {
-  margin: 12px 0 0;
-  color: var(--telegram-hint-color);
-  font-size: 1rem;
-  line-height: 1.5;
+.draft-kind-icon {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 0.86rem;
+  line-height: 1;
+  vertical-align: -0.05em;
 }
 
 .status {
@@ -107,11 +111,18 @@ h1 {
   width: 100%;
 }
 
+.draft-editor {
+  width: 100%;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
 .draft-meta {
   display: flex;
   gap: 8px;
   color: var(--telegram-hint-color);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   text-transform: capitalize;
 }
 
@@ -120,26 +131,99 @@ h1 {
   content: "·";
 }
 
-.draft-preview h2 {
-  margin: 14px 0 18px;
-  font-size: 1.25rem;
+.subject-field {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  width: 100%;
+  margin: 2px 0 12px;
 }
 
-.tiptap-preview {
+.subject-field label {
+  flex: 0 0 auto;
+  color: var(--telegram-hint-color);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.subject-input {
   width: 100%;
-  min-height: 3rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.subject-input::placeholder {
+  color: var(--telegram-hint-color);
+}
+
+.editor-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: calc(100% + 28px);
+  margin: 0 -14px 12px;
+  padding: 8px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--telegram-text-color) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--telegram-text-color) 10%, transparent);
+  overflow-x: auto;
+}
+
+.editor-toolbar button {
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--telegram-button-color) 12%, transparent);
+  color: var(--telegram-text-color);
+  cursor: pointer;
+}
+
+.editor-toolbar button {
+  min-width: 34px;
+  padding: 7px 8px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.toolbar-spacer {
+  flex: 1 0 8px;
+}
+
+.toolbar-save-button {
+  background: var(--telegram-button-color);
+  color: var(--telegram-button-text-color, #fff);
+  font-size: 0.95rem !important;
+}
+
+.editor-toolbar button:disabled,
+.toolbar-save-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.tiptap-editor {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 12rem;
   font-size: 1rem;
   line-height: 1.55;
 }
 
-.tiptap-preview .tiptap {
+.tiptap-editor .tiptap {
+  height: 100%;
+  min-height: 12rem;
   outline: none;
 }
 
-.tiptap-preview p {
+.tiptap-editor p {
   margin: 0 0 0.9rem;
 }
 
-.tiptap-preview p:last-child {
+.tiptap-editor p:last-child {
   margin-bottom: 0;
 }
