@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,15 +19,26 @@ import (
 	applicationTools "tourplannerbot/internal/tools"
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/mcpclient"
+	"tourplannerbot/internal/webapp"
 
 	"github.com/go-telegram/bot"
+	"github.com/labstack/echo/v5"
+	"gorm.io/gorm"
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("tourplannerbot stopped", "error", err)
+		os.Exit(1)
+	}
+}
+
+// run initializes the HTTP server and Telegram bot, returning errors only after
+// deferred shutdown handlers have drained active resources.
+func run() error {
 	applicationConfig, err := config.LoadFromEnvironment()
 	if err != nil {
-		slog.Error("failed to load configuration", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load configuration: %w", err)
 	}
 
 	logLevel := slog.LevelInfo
@@ -38,19 +51,25 @@ func main() {
 	}))
 
 	logger.Info("starting tourplannerbot", "log_level", applicationConfig.LogLevel)
-	applicationContext, cancelApplicationContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signalContext, cancelSignalContext := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancelSignalContext()
+	applicationContext, cancelApplicationContext := context.WithCancel(signalContext)
 	defer cancelApplicationContext()
+
+	databaseReadiness := database.NewReadiness()
+	echoServer := webapp.NewServer(logger, databaseReadiness)
+	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()
 	if applicationConfig.Tools.CurrentTime.Enabled {
 		currentTimeTool, err := currenttime.New(applicationConfig.Tools.CurrentTime.DefaultTimezone)
 		if err != nil {
 			logger.Error("failed to initialize current_time tool", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("initialize current_time tool: %w", err)
 		}
 		if err := toolRegistry.Register(currentTimeTool); err != nil {
 			logger.Error("failed to register current_time tool", "error", err)
-			os.Exit(1)
+			return fmt.Errorf("register current_time tool: %w", err)
 		}
 	}
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)
@@ -63,17 +82,18 @@ func main() {
 	}
 	logger.Info("tools initialized", "enabled_tools", registeredToolNames)
 
-	databaseConnection, err := database.Open(applicationContext, applicationConfig.DatabaseURL)
+	databaseConnection, err := openDatabaseWithRetry(applicationContext, logger, applicationConfig.DatabaseURL)
 	if err != nil {
-		logger.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		logger.Info("application stopped before PostgreSQL became available", "error", err)
+		return fmt.Errorf("wait for PostgreSQL: %w", err)
 	}
 
 	sqlDatabaseConnection, err := databaseConnection.DB()
 	if err != nil {
 		logger.Error("failed to access database connection pool", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("access database connection pool: %w", err)
 	}
+	databaseReadiness.SetConnection(sqlDatabaseConnection)
 	defer sqlDatabaseConnection.Close()
 
 	llmClient := llm.NewClient(
@@ -87,7 +107,7 @@ func main() {
 	systemInstructions, err := prompt.Load("prompts/system_query.md")
 	if err != nil {
 		logger.Error("failed to load query system prompt", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load query system prompt: %w", err)
 	}
 	messageHandler := telegram.NewHandler(
 		logger,
@@ -105,13 +125,13 @@ func main() {
 	)
 	if err != nil {
 		logger.Error("failed to create telegram bot", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("create Telegram bot: %w", err)
 	}
 
 	botInfo, err := telegramBot.GetMe(applicationContext)
 	if err != nil {
 		logger.Error("failed to get bot info from telegram", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("get Telegram bot info: %w", err)
 	}
 	logger.Info("connected to telegram",
 		"bot_id", botInfo.ID,
@@ -124,6 +144,51 @@ func main() {
 	logger.Info("bot is running, press Ctrl+C to stop")
 	telegramBot.Start(applicationContext)
 	logger.Info("bot stopped gracefully")
+	return nil
+}
+
+// startHTTPServer starts Echo independently from the Telegram bot. Echo uses
+// the shared context to drain requests during shutdown and a fatal listener
+// error cancels the rest of the application.
+func startHTTPServer(applicationContext context.Context, cancelApplicationContext context.CancelFunc, logger *slog.Logger, port int, echoServer *echo.Echo) {
+	go func() {
+		echoStartConfiguration := echo.StartConfig{
+			Address:         fmt.Sprintf("0.0.0.0:%d", port),
+			GracefulTimeout: 10 * time.Second,
+			BeforeServeFunc: func(httpServer *http.Server) error {
+				httpServer.ReadHeaderTimeout = 5 * time.Second
+				return nil
+			},
+		}
+		if err := echoStartConfiguration.Start(applicationContext, echoServer); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Error("Echo HTTP server stopped unexpectedly", "error", err)
+			cancelApplicationContext()
+		}
+	}()
+}
+
+// openDatabaseWithRetry waits for PostgreSQL while the liveness endpoint stays
+// available and readiness reports a temporary failure.
+func openDatabaseWithRetry(applicationContext context.Context, logger *slog.Logger, databaseURL string) (*gorm.DB, error) {
+	const databaseRetryInterval = 5 * time.Second
+
+	for {
+		databaseConnection, err := database.Open(applicationContext, databaseURL)
+		if err == nil {
+			return databaseConnection, nil
+		}
+		logger.Warn("PostgreSQL unavailable; retrying", "retry_in", databaseRetryInterval.String(), "error", err)
+
+		retryTimer := time.NewTimer(databaseRetryInterval)
+		select {
+		case <-applicationContext.Done():
+			if !retryTimer.Stop() {
+				<-retryTimer.C
+			}
+			return nil, applicationContext.Err()
+		case <-retryTimer.C:
+		}
+	}
 }
 
 // initializeMCPServers connects enabled Streamable HTTP servers independently.

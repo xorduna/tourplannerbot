@@ -37,6 +37,7 @@ depends_on:
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
   - internal/database/database.go
+  - internal/database/readiness.go
   - internal/models/allowed_user.go
   - internal/models/message.go
   - .github/workflows/deploy.yml
@@ -67,6 +68,34 @@ depends_on:
 used_by:
   - cmd/bot/main.go
   - internal/telegram/handler.go
+```
+
+## mcps.md
+
+```yaml
+title: MCP Tools
+description: Configuration and operating notes for the Model Context Protocol tools available to the bot.
+methods: []
+depends_on:
+  - internal/config/config.go
+  - internal/tools/mcpclient/client.go
+used_by:
+  - README.md
+```
+
+## plan-draft-editor.md
+
+```yaml
+title: Collaborative Draft Editor Plan
+description: Architecture and incremental implementation plan for an authenticated Telegram Mini App draft editor.
+methods: []
+depends_on:
+  - README.md
+  - .env.example
+  - .do/app.yaml
+  - internal/config/config.go
+used_by:
+  - cmd/bot/main.go
 ```
 
 ## plan.md

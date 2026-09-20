@@ -1,8 +1,8 @@
 name: tourplannerbot
 region: lon  # change to your preferred region (nyc, sfo, fra, sgp, etc.)
 
-workers:
-  - name: worker
+services:
+  - name: web
     image:
       registry_type: DOCR
       registry: maulabs  # replace with your DO registry name
@@ -10,6 +10,21 @@ workers:
       tag: ${IMAGE_TAG}
     instance_size_slug: basic-xxs
     instance_count: 1
+    http_port: 8080
+    health_check:
+      initial_delay_seconds: 5
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 3
+      http_path: /healthz
+    liveness_health_check:
+      initial_delay_seconds: 5
+      period_seconds: 10
+      timeout_seconds: 5
+      success_threshold: 1
+      failure_threshold: 6
+      http_path: /healthz
     envs:
       - key: TELEGRAM_BOT_TOKEN
         scope: RUN_TIME
@@ -36,3 +51,16 @@ workers:
       - key: LOG_LEVEL
         scope: RUN_TIME
         value: info
+      - key: PORT
+        scope: RUN_TIME
+        value: "8080"
+      # APP_BASE_URL is intentionally not injected until Slice 3 needs it to
+      # create Telegram Mini App links.
+
+ingress:
+  rules:
+    - component:
+        name: web
+      match:
+        path:
+          prefix: /

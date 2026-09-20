@@ -3,14 +3,24 @@ IMAGE := tourplannerbot
 GOOSE_VERSION := v3.25.0
 GOOSE_INSTALL ?= $(HOME)/.goose
 GOOSE_BINARY := $(GOOSE_INSTALL)/bin/goose
+WEB_DIRECTORY := web
 
-.PHONY: run build tidy db-up db-down docker-up docker-down goose-install migrate-up migrate-status registry-push deploy
+.PHONY: run build test tidy frontend-install frontend-build db-up db-down docker-up docker-down goose-install migrate-up migrate-status registry-push deploy
 
-run:
+run: frontend-build
 	export $$(grep -v '^#' .env | xargs) && go run ./cmd/bot
 
-build:
+build: frontend-build
 	CGO_ENABLED=0 go build -o bin/bot ./cmd/bot
+
+test: frontend-build
+	go test ./...
+
+frontend-install:
+	npm --prefix $(WEB_DIRECTORY) ci
+
+frontend-build: frontend-install
+	npm --prefix $(WEB_DIRECTORY) run build
 
 tidy:
 	go mod tidy

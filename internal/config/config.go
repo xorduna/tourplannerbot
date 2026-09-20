@@ -63,6 +63,8 @@ type Config struct {
 	Tools                 ToolsConfig
 	AccessPIN             string
 	LogLevel              string
+	Port                  int
+	AppBaseURL            string
 }
 
 // LoadFromEnvironment reads application configuration through Viper. Environment
@@ -83,6 +85,7 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.current_time.enabled", true)
 	configuration.SetDefault("tools.current_time.default_timezone", defaultCurrentTimeTimezone)
 	configuration.SetDefault("log_level", "info")
+	configuration.SetDefault("port", 8080)
 
 	telegramBotToken, err := requiredString(configuration, "telegram_bot_token")
 	if err != nil {
@@ -97,6 +100,14 @@ func LoadFromEnvironment() (*Config, error) {
 		return nil, err
 	}
 	accessPIN, err := requiredString(configuration, "access_pin")
+	if err != nil {
+		return nil, err
+	}
+	port, err := portNumber(configuration.GetString("port"))
+	if err != nil {
+		return nil, err
+	}
+	appBaseURL, err := optionalHTTPURL(configuration.GetString("app_base_url"), "APP_BASE_URL")
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +164,10 @@ func LoadFromEnvironment() (*Config, error) {
 			},
 			MCPServers: mcpServers,
 		},
-		AccessPIN: accessPIN,
-		LogLevel:  configuration.GetString("log_level"),
+		AccessPIN:  accessPIN,
+		LogLevel:   configuration.GetString("log_level"),
+		Port:       port,
+		AppBaseURL: appBaseURL,
 	}, nil
 }
 
@@ -281,6 +294,28 @@ func positiveInteger(configuration *viper.Viper, key string, environmentVariable
 		return 0, fmt.Errorf("%s must be a positive integer, got: %s", environmentVariableName, rawValue)
 	}
 	return parsedValue, nil
+}
+
+// portNumber parses a TCP port accepted by the HTTP server.
+func portNumber(rawPort string) (int, error) {
+	parsedPort, err := strconv.Atoi(rawPort)
+	if err != nil || parsedPort < 1 || parsedPort > 65535 {
+		return 0, fmt.Errorf("PORT must be an integer between 1 and 65535, got: %s", rawPort)
+	}
+	return parsedPort, nil
+}
+
+// optionalHTTPURL validates the externally visible base URL when configured.
+func optionalHTTPURL(rawURL string, environmentVariableName string) (string, error) {
+	baseURL := strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	if baseURL == "" {
+		return "", nil
+	}
+	parsedURL, err := url.ParseRequestURI(baseURL)
+	if err != nil || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") || parsedURL.Host == "" {
+		return "", fmt.Errorf("%s must be an absolute HTTP or HTTPS URL, got: %s", environmentVariableName, rawURL)
+	}
+	return baseURL, nil
 }
 
 // booleanValue parses a boolean configuration value without silently accepting

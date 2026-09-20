@@ -1,3 +1,16 @@
+---
+title: Collaborative Draft Editor Plan
+description: Architecture and incremental implementation plan for an authenticated Telegram Mini App draft editor.
+methods: []
+depends_on:
+  - README.md
+  - .env.example
+  - .do/app.yaml
+  - internal/config/config.go
+used_by:
+  - cmd/bot/main.go
+---
+
 # Plan: collaborative draft editor
 
 ## Goal
@@ -207,7 +220,7 @@ If the current revision is no longer 3, the API will return `409 Conflict` with 
 
 Each slice must leave an executable and verifiable feature. The order reduces risk before adding the model to the flow.
 
-### Slice 1 — Web runtime, health, and deployment
+### Slice 1 — Web runtime, health, and deployment ✅ Complete
 
 **Demonstrable result:** the binary continues responding through the bot and also exposes an HTTPS URL with health checks.
 
@@ -227,7 +240,7 @@ Each slice must leave an executable and verifiable feature. The order reduces ri
 - The tunnel URL returns the health check.
 - The DigitalOcean deployment is healthy as a `service`.
 
-### Slice 2 — Embedded SolidJS/Vite shell
+### Slice 2 — Embedded SolidJS/Vite shell ✅ Complete
 
 **Demonstrable result:** Go serves a compiled Solid page from inside the binary.
 
