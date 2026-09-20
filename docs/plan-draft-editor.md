@@ -240,7 +240,7 @@ Each slice must leave an executable and verifiable feature. The order reduces ri
 - The tunnel URL returns the health check.
 - The DigitalOcean deployment is healthy as a `service`.
 
-### Slice 2 — Embedded SolidJS/Vite shell
+### Slice 2 — Embedded SolidJS/Vite shell ✅ Complete
 
 **Demonstrable result:** Go serves a compiled Solid page from inside the binary.
 

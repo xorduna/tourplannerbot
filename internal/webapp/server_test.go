@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -103,5 +104,61 @@ func TestServerLogsEachRequest(t *testing.T) {
 	}
 	if !strings.Contains(logOutput.String(), "status=200") {
 		t.Errorf("Echo request log = %q, want status=200", logOutput.String())
+	}
+}
+
+func TestServerServesEmbeddedMiniAppAndItsVersionedAssets(t *testing.T) {
+	server := newTestServer(readinessCheckerFunc(func(applicationContext context.Context) error {
+		return nil
+	}))
+	miniAppRequest := httptest.NewRequest(http.MethodGet, "/miniapp", nil)
+	miniAppResponseRecorder := httptest.NewRecorder()
+
+	server.ServeHTTP(miniAppResponseRecorder, miniAppRequest)
+
+	if miniAppResponseRecorder.Code != http.StatusOK {
+		t.Fatalf("GET /miniapp status = %d, want %d", miniAppResponseRecorder.Code, http.StatusOK)
+	}
+	if !strings.Contains(miniAppResponseRecorder.Body.String(), "id=\"root\"") {
+		t.Fatal("GET /miniapp did not return the compiled Mini App shell")
+	}
+
+	versionedAssetPath := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`).FindStringSubmatch(miniAppResponseRecorder.Body.String())
+	if len(versionedAssetPath) != 2 {
+		t.Fatalf("GET /miniapp did not reference a versioned asset: %q", miniAppResponseRecorder.Body.String())
+	}
+	assetRequest := httptest.NewRequest(http.MethodGet, versionedAssetPath[1], nil)
+	assetResponseRecorder := httptest.NewRecorder()
+
+	server.ServeHTTP(assetResponseRecorder, assetRequest)
+
+	if assetResponseRecorder.Code != http.StatusOK {
+		t.Errorf("GET %s status = %d, want %d", versionedAssetPath[1], assetResponseRecorder.Code, http.StatusOK)
+	}
+}
+
+func TestServerFallsBackOnlyWithinMiniAppRoutes(t *testing.T) {
+	server := newTestServer(readinessCheckerFunc(func(applicationContext context.Context) error {
+		return nil
+	}))
+	testCases := []struct {
+		path       string
+		wantStatus int
+	}{
+		{path: "/miniapp/future-route", wantStatus: http.StatusOK},
+		{path: "/api/drafts", wantStatus: http.StatusNotFound},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
+			responseRecorder := httptest.NewRecorder()
+
+			server.ServeHTTP(responseRecorder, request)
+
+			if responseRecorder.Code != testCase.wantStatus {
+				t.Errorf("GET %s status = %d, want %d", testCase.path, responseRecorder.Code, testCase.wantStatus)
+			}
+		})
 	}
 }

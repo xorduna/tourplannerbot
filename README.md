@@ -27,7 +27,7 @@ cmd/bot/main.go               # Entrypoint
 internal/
   config/config.go            # Env var loading
   database/database.go        # GORM PostgreSQL connection
-  webapp/server.go            # Health and readiness HTTP endpoints
+  webapp/                     # Echo server and embedded Mini App assets
   llm/client.go               # Official OpenAI Go SDK Responses API client
   models/                      # GORM models for authorized users and messages
   telegram/handler.go         # Message routing and persisted LLM/tool loop
@@ -45,6 +45,7 @@ prompts/
 Dockerfile
 docker-compose.yml            # Local dev: bot + postgres
 .env.example
+web/                           # SolidJS + TypeScript + Vite Mini App source
 ```
 
 ## Running Locally
@@ -81,6 +82,29 @@ The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of
 `127.0.0.1`, or attach all services to one Compose network and use their service
 names.
+
+## Mini App Frontend
+
+The production Mini App is compiled from `web/` and embedded in the Go binary;
+Node is not required at runtime. Build the frontend and binary together with:
+
+```bash
+make build
+```
+
+After the bot starts, open `http://localhost:8080/miniapp` to see the shell.
+It reports a clear development state outside Telegram, and uses Telegram theme,
+viewport, and safe-area values when the SDK is available.
+
+For frontend hot-module replacement, run Vite separately. It listens on 5173
+and proxies `/api` to the Go process on 8080:
+
+```bash
+npm --prefix web run dev
+```
+
+Use an HTTPS tunnel to port 5173 for Telegram browser testing in this mode;
+use a tunnel to port 8080 when testing the compiled production shell.
 
 ## Database Migrations
 

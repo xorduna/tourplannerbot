@@ -3,6 +3,7 @@ package webapp
 
 import (
 	"context"
+	"io/fs"
 	"log/slog"
 	"net/http"
 
@@ -25,7 +26,18 @@ func NewServer(logger *slog.Logger, readinessChecker ReadinessChecker) *echo.Ech
 	echoServer.Use(middleware.RequestLogger())
 	echoServer.GET("/healthz", handleLiveness)
 	echoServer.GET("/readyz", handleReadiness(readinessChecker))
+	registerMiniAppRoutes(echoServer, embeddedAssetFileSystem())
 	return echoServer
+}
+
+// registerMiniAppRoutes serves Vite's versioned assets and limits the SPA
+// fallback to /miniapp so unknown API routes retain their normal 404 response.
+func registerMiniAppRoutes(echoServer *echo.Echo, assetFileSystem fs.FS) {
+	echoServer.StaticFS("/assets/", echo.MustSubFS(assetFileSystem, "assets"))
+	echoServer.FileFS("/miniapp", "index.html", assetFileSystem)
+	echoServer.GET("/miniapp/*", func(echoContext *echo.Context) error {
+		return echoContext.FileFS("index.html", assetFileSystem)
+	})
 }
 
 // handleLiveness reports that the process is accepting HTTP requests without
