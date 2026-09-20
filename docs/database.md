@@ -55,5 +55,5 @@ The `deploy` job injects the `DATABASE_URL` GitHub Actions secret as a runtime s
 
 Before enabling this flow, configure these GitHub Actions values:
 
-- Repository variables: `DO_APP_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. Set `APP_BASE_URL` when a stable public URL is available.
+- Repository variables: `DO_APP_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. `APP_BASE_URL` is intentionally deferred until Slice 3 requires it for Telegram links.
 - Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `ACCESS_PIN`.

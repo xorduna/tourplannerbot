@@ -8,6 +8,6 @@ set -euo pipefail
 : "${OPENAI_API_KEY:?OPENAI_API_KEY is required}"
 : "${TELEGRAM_BOT_TOKEN:?TELEGRAM_BOT_TOKEN is required}"
 
-envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $DATABASE_URL $OPENAI_API_KEY $ACCESS_PIN $APP_BASE_URL' \
+envsubst '$IMAGE_TAG $TELEGRAM_BOT_TOKEN $DATABASE_URL $OPENAI_API_KEY $ACCESS_PIN' \
   < .do/app.yaml > .do/app.deploy.yaml
 doctl apps update "${DO_APP_ID}" --spec .do/app.deploy.yaml --wait

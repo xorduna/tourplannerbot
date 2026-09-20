@@ -54,9 +54,8 @@ services:
       - key: PORT
         scope: RUN_TIME
         value: "8080"
-      - key: APP_BASE_URL
-        scope: RUN_TIME
-        value: "${APP_BASE_URL}"
+      # APP_BASE_URL is intentionally not injected until Slice 3 needs it to
+      # create Telegram Mini App links.
 
 ingress:
   rules:

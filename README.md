@@ -153,4 +153,4 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - `GET /healthz` is used for platform health and liveness checks; `GET /readyz` returns `503` until PostgreSQL is reachable
 - Set all required env vars as secrets in the DO console
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, and, once known, `APP_BASE_URL` as GitHub Actions variables; set `ACCESS_PIN` as a GitHub Actions secret.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret. `APP_BASE_URL` will be added to the deployment flow in Slice 3, when Telegram links need it.
