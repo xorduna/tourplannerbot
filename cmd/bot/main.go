@@ -170,6 +170,7 @@ func run() error {
 		logger.Error("failed to get bot info from telegram", "error", err)
 		return fmt.Errorf("get Telegram bot info: %w", err)
 	}
+	messageHandler.SetBotUsername(botInfo.Username)
 	logger.Info("connected to telegram",
 		"bot_id", botInfo.ID,
 		"bot_username", botInfo.Username,

@@ -438,7 +438,7 @@ This is not required to demonstrate the main collaborative flow.
 - **Output actions:** copy plain text, open `mailto:`, or share to WhatsApp. No automatic sending without explicit confirmation.
 - **Richer draft types:** recipient, CC/BCC, language, tone, and metadata specific to email or WhatsApp.
 - **Revision history and recovery:** add historical snapshots, comparison, and restoration if a concrete need emerges.
-- **Groups and topics:** `startapp` deep link, per-conversation authorization, and return to the correct topic.
+- **Topic follow-up:** navigation back to the originating topic and shared-editor rules beyond the current owner-scoped access.
 - **Process separation:** bot worker and web service if the API needs to scale independently.
 - **Observability:** metrics for creation, editing, conflicts, and errors, without logging sensitive content.
 - **Mobile E2E:** frontend tests with a Telegram viewport; the real Telegram handshake will continue to require a smoke test through a tunnel.

@@ -84,16 +84,18 @@ Use the generated HTTPS address as the local `APP_BASE_URL`.
 
 ### Telegram Mini App handshake
 
-After authorizing yourself with the PIN, send `/editor` to the bot in a **private
-chat**. It replies with an **Open editor** button. Telegram opens `/miniapp`,
+After authorizing yourself with the PIN, send `/editor` to the bot. It replies
+with an **Open editor** button. In a private chat Telegram opens `/miniapp`,
 which posts `Telegram.WebApp.initData` to the server. The server validates the
 Telegram signature and `auth_date`, confirms the user is in `allowed_users`,
 and creates a secure, HttpOnly API session cookie. The Mini App then displays
 the authenticated Telegram identity.
 
 Inline `web_app` buttons are limited by Telegram to private chats with the bot.
-The eventual group flow will use Telegram's `startapp` launch alternative;
-`/editor` explains this limitation instead of showing an unusable button.
+In groups and forum topics, the bot instead sends a Main Mini App link using
+`startapp`; the opaque draft reference reaches the editor as
+`tgWebAppStartParam`. Configure the bot's **Main Mini App** in @BotFather with
+`${APP_BASE_URL}/miniapp` before using this launch mode.
 
 ### Draft creation and temporary commands
 
@@ -101,10 +103,11 @@ When Diana explicitly asks to write or reply with a sendable email, WhatsApp,
 or other editable text, the model calls `create_draft`. It creates a real
 revision-one draft for the current conversation and replies with a short
 confirmation, a complete preview after a horizontal divider, and an **Edit**
-button in a private chat. Lists, bold, italic, and HTTPS links are retained in
-both the preview and the editor. The model can supply only the kind and text:
-the application provides the conversation and owner from the Telegram update.
-Email subjects are intentionally left empty, including when drafting a reply.
+button in private chats, groups, and topics. Lists, bold, italic, and HTTPS links
+are retained in both the preview and the editor. The model can supply only the
+kind and text: the application provides the conversation and owner from the
+Telegram update. Email subjects are intentionally left empty, including when
+drafting a reply.
 
 When an active draft exists, an explicit change request such as “fes-la més
 curta” updates that same draft rather than creating a new one. The model gets a
@@ -124,8 +127,8 @@ interface:
 `create` creates a real revision-one draft for the current chat and topic, and
 supersedes the previous active draft in that conversation. `active` displays
 only the calling user's active draft. These commands do not invoke the LLM. In
-a private chat they also attach an **Open editor** button that opens that exact
-draft for editing.
+all chats they also attach an **Open editor** button that opens that exact draft
+for editing.
 
 The MCP URLs in `.env.example` target servers published on the host. When the
 bot itself runs inside Docker Desktop, use `host.docker.internal` instead of

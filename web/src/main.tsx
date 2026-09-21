@@ -26,7 +26,16 @@ interface Draft {
   updated_at: string;
 }
 
-const draftReference = new URLSearchParams(window.location.search).get("draft");
+function draftReferenceFromLaunch(): string | null {
+  const launchParameters = new URLSearchParams(window.location.search);
+  const directReference = launchParameters.get("draft");
+  if (directReference) return directReference;
+
+  const startParameter = launchParameters.get("tgWebAppStartParam");
+  return startParameter?.startsWith("draft_") ? startParameter.slice("draft_".length) : null;
+}
+
+const draftReference = draftReferenceFromLaunch();
 
 function setSafeAreaVariables(inset: TelegramSafeAreaInset | undefined, prefix: string): void {
   const root = document.documentElement;

@@ -43,12 +43,19 @@ type Handler struct {
 	responseGenerator                   responseGenerator
 	accessPIN                           string
 	appBaseURL                          string
+	botUsername                         string
 	systemInstructions                  string
 	messageHistoryMaxMessages           int
 	toolCallMaxIterations               int
 	toolRegistry                        *applicationTools.Registry
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
+}
+
+// SetBotUsername enables Main Mini App deep links after GetMe has returned the
+// canonical username. It must be called before the bot starts handling updates.
+func (telegramHandler *Handler) SetBotUsername(botUsername string) {
+	telegramHandler.botUsername = strings.TrimPrefix(strings.TrimSpace(botUsername), "@")
 }
 
 // NewHandler creates a message handler with the supplied system instructions and history limit.
@@ -301,16 +308,42 @@ func draftPreviewText(heading string, draft *applicationModels.Draft) string {
 	return fmt.Sprintf("%s\n\n────────\n\n%s", heading, markdown)
 }
 
-// draftPreviewReplyMarkup returns the Mini App button only for the private-chat
-// launch mode supported by Telegram inline Web App buttons.
+const draftStartParameterPrefix = "draft_"
+
+// mainMiniAppURL builds a Telegram Main Mini App deep link. Unlike inline
+// web_app buttons, Telegram supports this launch mode in groups and topics.
+func (telegramHandler *Handler) mainMiniAppURL(startParameter string) string {
+	if telegramHandler.botUsername == "" {
+		return ""
+	}
+	miniAppURL := url.URL{Scheme: "https", Host: "t.me", Path: "/" + telegramHandler.botUsername}
+	if startParameter == "" {
+		miniAppURL.RawQuery = "startapp"
+	} else {
+		queryValues := miniAppURL.Query()
+		queryValues.Set("startapp", startParameter)
+		miniAppURL.RawQuery = queryValues.Encode()
+	}
+	return miniAppURL.String()
+}
+
+// draftPreviewReplyMarkup uses the direct inline Web App button in private
+// chats and a Main Mini App startapp link everywhere else, including topics.
 func (telegramHandler *Handler) draftPreviewReplyMarkup(chatType models.ChatType, draftID string) models.ReplyMarkup {
-	if chatType != models.ChatTypePrivate || telegramHandler.appBaseURL == "" {
+	if chatType == models.ChatTypePrivate && telegramHandler.appBaseURL != "" {
+		miniAppURL := telegramHandler.appBaseURL + "/miniapp?draft=" + url.QueryEscape(draftID)
+		return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{
+			Text:   "Edit",
+			WebApp: &models.WebAppInfo{URL: miniAppURL},
+		}}}}
+	}
+	miniAppURL := telegramHandler.mainMiniAppURL(draftStartParameterPrefix + draftID)
+	if miniAppURL == "" {
 		return nil
 	}
-	miniAppURL := telegramHandler.appBaseURL + "/miniapp?draft=" + url.QueryEscape(draftID)
 	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{
-		Text:   "Edit",
-		WebApp: &models.WebAppInfo{URL: miniAppURL},
+		Text: "Edit",
+		URL:  miniAppURL,
 	}}}}
 }
 
@@ -327,8 +360,8 @@ func (telegramHandler *Handler) sendDraftPreviewMessage(ctx context.Context, tel
 	})
 }
 
-// sendDraftPreview sends a temporary draft summary and, in private chats,
-// attaches the Mini App button carrying only the opaque draft UUID reference.
+// sendDraftPreview sends a temporary draft summary with a launch button that
+// carries only the opaque draft UUID reference.
 func (telegramHandler *Handler) sendDraftPreview(ctx context.Context, telegramBot *bot.Bot, message *models.Message, draft *applicationModels.Draft, heading string) {
 	previewMessage, err := telegramHandler.sendDraftPreviewMessage(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, message.Chat.Type, draft, heading)
 	if err != nil {
@@ -351,26 +384,30 @@ func isOpenEditorCommand(incomingText string) bool {
 	return commandName == "/editor"
 }
 
-// handleOpenEditorCommand sends the Mini App button only in a private chat,
-// the launch mode supported by Telegram's inline web_app buttons.
+// handleOpenEditorCommand uses an inline Web App in private chats and the Main
+// Mini App deep-link launch mode in groups and topics.
 func (telegramHandler *Handler) handleOpenEditorCommand(ctx context.Context, telegramBot *bot.Bot, message *models.Message) {
-	if message.Chat.Type != models.ChatTypePrivate {
-		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "L'editor s'obre amb aquest botó només en un xat privat. Als grups caldrà usar l'alternativa startapp quan l'afegim.")
-		return
-	}
-	if telegramHandler.appBaseURL == "" {
+	if message.Chat.Type == models.ChatTypePrivate && telegramHandler.appBaseURL == "" {
 		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "L'editor encara no té una URL pública configurada.")
 		return
+	}
+	if message.Chat.Type != models.ChatTypePrivate && telegramHandler.botUsername == "" {
+		telegramHandler.sendText(ctx, telegramBot, message.Chat.ID, message.MessageThreadID, "No he pogut preparar l'enllaç de l'editor. Torna-ho a provar.")
+		return
+	}
+
+	button := models.InlineKeyboardButton{Text: "Open editor"}
+	if message.Chat.Type == models.ChatTypePrivate {
+		button.WebApp = &models.WebAppInfo{URL: telegramHandler.appBaseURL + "/miniapp"}
+	} else {
+		button.URL = telegramHandler.mainMiniAppURL("")
 	}
 
 	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
 		ChatID:          message.Chat.ID,
 		MessageThreadID: message.MessageThreadID,
 		Text:            "Obre l'editor per comprovar la connexió segura amb Telegram.",
-		ReplyMarkup: &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{{
-			Text:   "Open editor",
-			WebApp: &models.WebAppInfo{URL: telegramHandler.appBaseURL + "/miniapp"},
-		}}}},
+		ReplyMarkup:     &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{button}}},
 	})
 	if err != nil {
 		telegramHandler.logger.Error("failed to send Mini App button", "chat_id", message.Chat.ID, "error", err)
