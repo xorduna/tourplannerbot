@@ -25,6 +25,15 @@ Diana messages the bot directly for fast lookups with no client context. "What t
 
 The bot distinguishes modes by chat type: `private` → query mode, `group`/`supergroup` → trip mode with persistent context.
 
+## Audio Input
+
+Authorized users can send Telegram voice notes and audio attachments. The bot
+transcribes each completed recording with OpenAI, normalizes false starts and
+explicit spoken corrections into a canonical user message, and persists only
+that clean message as conversation context. Telegram receives two distinct
+messages: a `M’has dit que…` acknowledgement followed by the normal chatbot
+response. Audio binaries and raw transcripts are not persisted.
+
 ## Authentication
 
 PIN-based access. Single PIN stored as environment variable. Flow:

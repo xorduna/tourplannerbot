@@ -13,6 +13,7 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("OPENAI_MODEL", "")
+	t.Setenv("OPENAI_TRANSCRIPTION_MODEL", "")
 	t.Setenv("ACCESS_PIN", "1234")
 	t.Setenv("PORT", "")
 	t.Setenv("APP_BASE_URL", "")
@@ -54,6 +55,9 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	}
 	if applicationConfig.OpenAIModel != "gpt-5.5" {
 		t.Errorf("OpenAIModel = %q, want gpt-5.5", applicationConfig.OpenAIModel)
+	}
+	if applicationConfig.OpenAITranscriptionModel != "gpt-transcribe" {
+		t.Errorf("OpenAITranscriptionModel = %q, want gpt-transcribe", applicationConfig.OpenAITranscriptionModel)
 	}
 	if applicationConfig.LLMHistoryMaxMessages != 20 {
 		t.Errorf("LLMHistoryMaxMessages = %d, want 20", applicationConfig.LLMHistoryMaxMessages)
@@ -102,6 +106,20 @@ func TestLoadFromEnvironmentLoadsWebServerSettings(t *testing.T) {
 	}
 	if applicationConfig.TelegramWebAppAuthMaxAge != 10*time.Minute {
 		t.Errorf("TelegramWebAppAuthMaxAge = %s, want 10m", applicationConfig.TelegramWebAppAuthMaxAge)
+	}
+}
+
+// TestLoadFromEnvironmentLoadsTranscriptionModelOverride verifies audio transcription is independently configurable.
+func TestLoadFromEnvironmentLoadsTranscriptionModelOverride(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("OPENAI_TRANSCRIPTION_MODEL", "gpt-4o-mini-transcribe")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.OpenAITranscriptionModel != "gpt-4o-mini-transcribe" {
+		t.Errorf("OpenAITranscriptionModel = %q", applicationConfig.OpenAITranscriptionModel)
 	}
 }
 

@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
 
+	"tourplannerbot/internal/audioinput"
 	"tourplannerbot/internal/database"
 	"tourplannerbot/internal/llm"
 	applicationModels "tourplannerbot/internal/models"
@@ -24,6 +26,11 @@ import (
 // responseGenerator produces one text response from conversation context.
 type responseGenerator interface {
 	Generate(ctx context.Context, instructions string, conversationMessages []llm.Message, toolDefinitions []applicationTools.Definition) (llm.Generation, error)
+}
+
+// voiceInputProcessor converts one downloaded recording into clean conversation text.
+type voiceInputProcessor interface {
+	Process(ctx context.Context, audio audioinput.Audio) (audioinput.Result, error)
 }
 
 // authorizationResult describes how the handler should respond to an access check.
@@ -48,6 +55,8 @@ type Handler struct {
 	messageHistoryMaxMessages           int
 	toolCallMaxIterations               int
 	toolRegistry                        *applicationTools.Registry
+	voiceInputProcessor                 voiceInputProcessor
+	telegramFileHTTPClient              *http.Client
 	pendingAuthorizationByTelegramID    map[int64]struct{}
 	pendingAuthorizationByTelegramMutex sync.Mutex
 }
@@ -59,7 +68,7 @@ func (telegramHandler *Handler) SetBotUsername(botUsername string) {
 }
 
 // NewHandler creates a message handler with the supplied system instructions and history limit.
-func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, appBaseURL string, systemInstructions string, messageHistoryMaxMessages int, toolCallMaxIterations int, toolRegistry *applicationTools.Registry, responseGenerator responseGenerator) *Handler {
+func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN string, appBaseURL string, systemInstructions string, messageHistoryMaxMessages int, toolCallMaxIterations int, toolRegistry *applicationTools.Registry, responseGenerator responseGenerator, voiceProcessor voiceInputProcessor) *Handler {
 	return &Handler{
 		logger:                           logger,
 		databaseConnection:               databaseConnection,
@@ -70,6 +79,8 @@ func NewHandler(logger *slog.Logger, databaseConnection *gorm.DB, accessPIN stri
 		messageHistoryMaxMessages:        messageHistoryMaxMessages,
 		toolCallMaxIterations:            toolCallMaxIterations,
 		toolRegistry:                     toolRegistry,
+		voiceInputProcessor:              voiceProcessor,
+		telegramFileHTTPClient:           &http.Client{Timeout: time.Minute},
 		pendingAuthorizationByTelegramID: make(map[int64]struct{}),
 	}
 }
@@ -92,6 +103,7 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		"telegram_user_id", senderUser.ID,
 		"username", senderUser.Username,
 		"text_length", len(incomingText),
+		"has_audio", hasTelegramAudio(update.Message),
 	)
 
 	authorizationResult, err := telegramHandler.authorizeUser(ctx, senderUser, incomingText)
@@ -115,14 +127,51 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 		telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "✓ Accés concedit")
 		return
 	case authorizationResultAllowed:
+		isAudioMessage := hasTelegramAudio(update.Message)
+		var audioConfirmationSummary string
+		var listeningProgress *telegramResponseProgress
+		if isAudioMessage {
+			listeningProgress = newTelegramResponseProgressWithInitialStatus(ctx, telegramHandler, telegramBot, chatID, messageThreadID, "🎧 Escoltant l’àudio…")
+			if telegramHandler.voiceInputProcessor == nil {
+				listeningProgress.finish(ctx, "La transcripció d’àudio no està disponible.")
+				return
+			}
+			downloadedAudio, downloadError := telegramHandler.downloadTelegramAudio(ctx, telegramBot, update.Message)
+			if downloadError != nil {
+				telegramHandler.logger.Error("failed to download Telegram audio",
+					"chat_id", chatID,
+					"message_thread_id", messageThreadID,
+					"telegram_user_id", senderUser.ID,
+					"error", downloadError,
+				)
+				listeningProgress.finish(ctx, "No he pogut descarregar l’àudio. Torna’l a enviar o escriu-me el missatge.")
+				return
+			}
+			processedAudio, processingError := telegramHandler.voiceInputProcessor.Process(ctx, downloadedAudio)
+			if processingError != nil {
+				telegramHandler.logger.Error("failed to process Telegram audio",
+					"chat_id", chatID,
+					"message_thread_id", messageThreadID,
+					"telegram_user_id", senderUser.ID,
+					"error", processingError,
+				)
+				listeningProgress.finish(ctx, "No he pogut entendre l’àudio. Torna’l a enviar o escriu-me el missatge.")
+				return
+			}
+			incomingText = processedAudio.CanonicalMessage
+			audioConfirmationSummary = processedAudio.ConfirmationSummary
+		}
 		if incomingText == "" {
+			if listeningProgress != nil {
+				listeningProgress.finish(ctx, "No he pogut obtenir cap text de l’àudio. Torna’l a enviar o escriu-me el missatge.")
+			}
 			return
 		}
-		if isOpenEditorCommand(incomingText) {
+		if !isAudioMessage && isOpenEditorCommand(incomingText) {
 			telegramHandler.handleOpenEditorCommand(ctx, telegramBot, update.Message)
 			return
 		}
-		if telegramHandler.handleDraftCommand(ctx, telegramBot, update.Message) {
+		if !isAudioMessage && telegramHandler.handleDraftCommand(ctx, telegramBot, update.Message) {
 			return
 		}
 		userMessage, err := telegramHandler.saveUserMessage(ctx, chatID, messageThreadID, senderUser.ID, incomingText)
@@ -133,8 +182,15 @@ func (telegramHandler *Handler) HandleMessage(ctx context.Context, telegramBot *
 				"telegram_user_id", senderUser.ID,
 				"error", err,
 			)
-			telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar el missatge. Torna-ho a provar.")
+			if listeningProgress != nil {
+				listeningProgress.finish(ctx, "No he pogut desar el missatge. Torna-ho a provar.")
+			} else {
+				telegramHandler.sendText(ctx, telegramBot, chatID, messageThreadID, "No he pogut desar el missatge. Torna-ho a provar.")
+			}
 			return
+		}
+		if listeningProgress != nil {
+			listeningProgress.finish(ctx, audioConfirmationText(audioConfirmationSummary))
 		}
 
 		conversationMessages, err := telegramHandler.loadConversationMessages(ctx, chatID, messageThreadID)

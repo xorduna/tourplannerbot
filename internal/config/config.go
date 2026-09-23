@@ -53,6 +53,7 @@ type Config struct {
 	DatabaseURL              string
 	OpenAIAPIKey             string
 	OpenAIModel              string
+	OpenAITranscriptionModel string
 	OpenAIBaseURL            string
 	LLMProvider              string
 	LLMTariffsDirectory      string
@@ -77,6 +78,7 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.AutomaticEnv()
 
 	configuration.SetDefault("openai.model", "gpt-5.5")
+	configuration.SetDefault("openai.transcription_model", "gpt-transcribe")
 	configuration.SetDefault("openai.base_url", "https://api.openai.com/v1")
 	configuration.SetDefault("llm.provider", "openai")
 	configuration.SetDefault("llm.tariffs_dir", "tariffs")
@@ -152,17 +154,18 @@ func LoadFromEnvironment() (*Config, error) {
 	}
 
 	return &Config{
-		TelegramBotToken:      telegramBotToken,
-		DatabaseURL:           databaseURL,
-		OpenAIAPIKey:          openAIAPIKey,
-		OpenAIModel:           openAIModel,
-		OpenAIBaseURL:         configuration.GetString("openai.base_url"),
-		LLMProvider:           llmProvider,
-		LLMTariffsDirectory:   llmTariffsDirectory,
-		LLMMaxTokens:          llmMaxTokens,
-		LLMPricing:            llmPricing,
-		LLMHistoryMaxMessages: llmHistoryMaxMessages,
-		ToolCallMaxIterations: toolCallMaxIterations,
+		TelegramBotToken:         telegramBotToken,
+		DatabaseURL:              databaseURL,
+		OpenAIAPIKey:             openAIAPIKey,
+		OpenAIModel:              openAIModel,
+		OpenAITranscriptionModel: configuration.GetString("openai.transcription_model"),
+		OpenAIBaseURL:            configuration.GetString("openai.base_url"),
+		LLMProvider:              llmProvider,
+		LLMTariffsDirectory:      llmTariffsDirectory,
+		LLMMaxTokens:             llmMaxTokens,
+		LLMPricing:               llmPricing,
+		LLMHistoryMaxMessages:    llmHistoryMaxMessages,
+		ToolCallMaxIterations:    toolCallMaxIterations,
 		Tools: ToolsConfig{
 			CurrentTime: CurrentTimeToolConfig{
 				Enabled:         currentTimeEnabled,

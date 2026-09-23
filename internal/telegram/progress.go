@@ -40,12 +40,17 @@ type telegramResponseProgress struct {
 // newTelegramResponseProgress posts the initial thinking message and starts a
 // background typing indicator. Telegram delivery errors never abort generation.
 func newTelegramResponseProgress(ctx context.Context, handler *Handler, telegramBot *bot.Bot, chatID int64, messageThreadID int) *telegramResponseProgress {
+	return newTelegramResponseProgressWithInitialStatus(ctx, handler, telegramBot, chatID, messageThreadID, "💭 Pensant…")
+}
+
+// newTelegramResponseProgressWithInitialStatus starts progress with a caller-selected first milestone.
+func newTelegramResponseProgressWithInitialStatus(ctx context.Context, handler *Handler, telegramBot *bot.Bot, chatID int64, messageThreadID int, initialStatusText string) *telegramResponseProgress {
 	progress := &telegramResponseProgress{
 		handler:           handler,
 		telegramBot:       telegramBot,
 		chatID:            chatID,
 		messageThreadID:   messageThreadID,
-		currentStatusText: "💭 Pensant…",
+		currentStatusText: initialStatusText,
 	}
 
 	statusMessage, statusMessageError := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
