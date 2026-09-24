@@ -21,6 +21,12 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("TOOLS_MCPS", "")
 	t.Setenv("TOOLS_CURRENT_TIME_ENABLED", "")
 	t.Setenv("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE", "")
+	t.Setenv("TOOLS_BIGIN_REFRESH_TOKEN", "")
+	t.Setenv("TOOLS_BIGIN_CLIENT_ID", "")
+	t.Setenv("TOOLS_BIGIN_CLIENT_SECRET", "")
+	t.Setenv("TOOLS_BIGIN_ACCOUNTS_URL", "")
+	t.Setenv("TOOLS_BIGIN_API_URL", "")
+	t.Setenv("TOOLS_BIGIN_TIMEOUT", "")
 	t.Setenv("TOOLS_WIKIPEDIA_ENABLED", "")
 	t.Setenv("TOOLS_WIKIPEDIA_URL", "")
 	t.Setenv("TOOLS_WIKIPEDIA_AUTH_TYPE", "")
@@ -172,6 +178,43 @@ func TestLoadFromEnvironmentLoadsCurrentTimeOverrides(t *testing.T) {
 	}
 	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "America/New_York" {
 		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
+}
+
+// TestLoadFromEnvironmentEnablesBiginForCompleteCredentials verifies the three
+// OAuth values are sufficient to register the native integration.
+func TestLoadFromEnvironmentEnablesBiginForCompleteCredentials(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_BIGIN_REFRESH_TOKEN", "refresh-token")
+	t.Setenv("TOOLS_BIGIN_CLIENT_ID", "client-id")
+	t.Setenv("TOOLS_BIGIN_CLIENT_SECRET", "client-secret")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.Bigin.Enabled {
+		t.Fatal("Tools.Bigin.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.Bigin.AccountsURL != "https://accounts.zoho.eu" {
+		t.Errorf("Tools.Bigin.AccountsURL = %q", applicationConfig.Tools.Bigin.AccountsURL)
+	}
+	if applicationConfig.Tools.Bigin.APIURL != "https://www.zohoapis.eu" {
+		t.Errorf("Tools.Bigin.APIURL = %q", applicationConfig.Tools.Bigin.APIURL)
+	}
+	if applicationConfig.Tools.Bigin.CallTimeout != 30*time.Second {
+		t.Errorf("Tools.Bigin.CallTimeout = %s, want 30s", applicationConfig.Tools.Bigin.CallTimeout)
+	}
+}
+
+// TestLoadFromEnvironmentRejectsPartialBiginCredentials prevents a deployment
+// from silently starting without a usable OAuth credential set.
+func TestLoadFromEnvironmentRejectsPartialBiginCredentials(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_BIGIN_CLIENT_ID", "client-id")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for partial Bigin credentials")
 	}
 }
 

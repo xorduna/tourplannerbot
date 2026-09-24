@@ -9,6 +9,9 @@ methods:
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
   - tools.NewExecutionContext: Carries trusted Telegram conversation data to native tools.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
+  - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
+  - bigin.CreateEmailDraftTool.Execute: Saves one unsent plain-text email draft against a Bigin deal.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
   - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
   - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
@@ -18,6 +21,10 @@ depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/bigin/client.go
+  - internal/tools/bigin/get_deal.go
+  - internal/tools/bigin/search_contacts.go
+  - internal/tools/bigin/create_email_draft.go
   - internal/tools/draft/create_draft.go
   - internal/tools/draft/update_draft.go
   - internal/tools/mcpclient/client.go
@@ -66,6 +73,49 @@ the tool to return a conflict rather than overwrite it.
 `current_time` accepts an optional `timezone` argument containing an IANA timezone. When omitted, it uses `TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE`, which defaults to `Europe/Madrid`. Its JSON result contains the timezone, RFC 3339 local time, UTC offset, and Unix timestamp.
 
 The tool is registered when `TOOLS_CURRENT_TIME_ENABLED=true`, the default. Invalid configured or requested timezones fail explicitly rather than falling back silently.
+
+## Native Bigin tools
+
+`get_bigin_deal(deal_id)` retrieves one deal through the documented Bigin v2
+pipeline-record endpoint, `GET /bigin/v2/Pipelines/{record_id}`. The ID remains
+a string so large Zoho identifiers are never rounded. The response is returned
+as the complete JSON envelope, including custom fields, for the model to inspect
+and discuss with the user.
+
+`search_bigin_contacts(search_by, query)` retrieves contacts with the complete
+standard and custom field envelope returned by Bigin. `search_by=id` performs a
+direct `GET /bigin/v2/Contacts/{record_id}` lookup and is preferred whenever a
+contact ID is available. The `word`, `email`, and `phone` modes call the
+documented Contacts search endpoint. A normal HTTP 204 no-results response is
+normalized to `{"data":[]}` for the model.
+
+The tool is enabled automatically when `TOOLS_BIGIN_REFRESH_TOKEN`,
+`TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_BIGIN_CLIENT_SECRET` are all present. A
+partial credential set is a startup error; an entirely absent set leaves Bigin
+disabled. Access tokens are refreshed through the EU Zoho Accounts endpoint,
+cached until shortly before expiry, and refreshed once more after an HTTP 401.
+Neither OAuth credentials nor record payloads are written to application logs.
+
+An experimental `create_bigin_email_draft` implementation builds an unsent,
+plain-text email draft for the CRM v8
+`POST /Deals/{record_id}/__email_drafts` endpoint. The request always sets
+`rich_text=false`, supports exactly one recipient in this first iteration, and
+returns Zoho's draft ID on success. The tool rejects empty bodies, malformed
+email addresses, unknown arguments, HTTP errors, and application-level error
+items returned with HTTP 200.
+
+This package contains no send-mail endpoint or sending scope. The user must
+review and send every draft manually from the Bigin UI. Live tests against both
+`www.zohoapis.eu` and `bigin.zoho.eu` proved that the endpoint rejects the
+configured Bigin-only token with `OAUTH_SCOPE_MISMATCH`. The Bigin web client
+uses browser session cookies, a CSRF token, and an organization header instead
+of OAuth. Consequently, `create_bigin_email_draft` is not registered with the
+bot while the current OAuth scopes remain unchanged.
+
+The default endpoints are `https://accounts.zoho.eu` and
+`https://www.zohoapis.eu`; they can be overridden with
+`TOOLS_BIGIN_ACCOUNTS_URL` and `TOOLS_BIGIN_API_URL`. `TOOLS_BIGIN_TIMEOUT`
+defaults to `30s`.
 
 ## Calling and persistence
 

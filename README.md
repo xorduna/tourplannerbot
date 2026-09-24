@@ -11,6 +11,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Dynamic MCP tool discovery over Streamable HTTP
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
+- Bigin deal lookup and contact search by ID, name, email, or phone, with automatic Zoho OAuth token refresh
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
 - Live Telegram typing and an editable thinking/tool-use progress message
 - Native Telegram Rich Message tables with a readable list fallback
@@ -41,6 +42,7 @@ internal/
     registry.go               # Shared native/MCP-ready tool registry
     types.go                  # Provider-independent tool contract
     currenttime/              # Native current_time tool
+    bigin/                    # Native Zoho Bigin tools and OAuth client
     mcpclient/                # Streamable HTTP MCP adapter
 migrations/                   # Goose SQL migrations
 prompts/
@@ -197,6 +199,12 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |
 | `TOOLS_CURRENT_TIME_ENABLED` | no | `true` | Registers the native `current_time` tool |
 | `TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE` | no | `Europe/Madrid` | Default IANA timezone used when a call omits `timezone` |
+| `TOOLS_BIGIN_REFRESH_TOKEN` | together | — | Bigin OAuth refresh token; all three Bigin credentials enable the native Bigin tools |
+| `TOOLS_BIGIN_CLIENT_ID` | together | — | Bigin OAuth client ID |
+| `TOOLS_BIGIN_CLIENT_SECRET` | together | — | Bigin OAuth client secret; never logged |
+| `TOOLS_BIGIN_ACCOUNTS_URL` | no | `https://accounts.zoho.eu` | Zoho Accounts base URL for OAuth refreshes |
+| `TOOLS_BIGIN_API_URL` | no | `https://www.zohoapis.eu` | EU Zoho API base URL used for Bigin records |
+| `TOOLS_BIGIN_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Bigin API calls |
 | `TOOLS_MCPS` | no | empty | Comma-separated MCP server names; list membership enables a server by default |
 | `TOOLS_<NAME>_ENABLED` | no | list membership | Explicit per-server override; `true` may enable an unlisted known server and `false` disables a listed one |
 | `TOOLS_<NAME>_URL` | when enabled | — | Absolute Streamable HTTP MCP endpoint |

@@ -17,6 +17,9 @@ import (
 const (
 	defaultCurrentTimeTimezone = "Europe/Madrid"
 	defaultMCPTimeout          = 30 * time.Second
+	defaultBiginAccountsURL    = "https://accounts.zoho.eu"
+	defaultBiginAPIURL         = "https://www.zohoapis.eu"
+	defaultBiginTimeout        = 30 * time.Second
 )
 
 var (
@@ -28,6 +31,19 @@ var (
 type CurrentTimeToolConfig struct {
 	Enabled         bool
 	DefaultTimezone string
+}
+
+// BiginToolConfig contains the credentials and endpoints shared by native
+// Bigin tools. The integration is enabled when all three OAuth credentials are
+// configured and remains disabled when all three are empty.
+type BiginToolConfig struct {
+	Enabled      bool
+	RefreshToken string
+	ClientID     string
+	ClientSecret string
+	AccountsURL  string
+	APIURL       string
+	CallTimeout  time.Duration
 }
 
 // MCPServerConfig contains the connection and authentication settings for one
@@ -44,6 +60,7 @@ type MCPServerConfig struct {
 // ToolsConfig contains configuration shared by the application's tools.
 type ToolsConfig struct {
 	CurrentTime CurrentTimeToolConfig
+	Bigin       BiginToolConfig
 	MCPServers  []MCPServerConfig
 }
 
@@ -87,6 +104,9 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tool_call_max_iterations", 10)
 	configuration.SetDefault("tools.current_time.enabled", true)
 	configuration.SetDefault("tools.current_time.default_timezone", defaultCurrentTimeTimezone)
+	configuration.SetDefault("tools.bigin.accounts_url", defaultBiginAccountsURL)
+	configuration.SetDefault("tools.bigin.api_url", defaultBiginAPIURL)
+	configuration.SetDefault("tools.bigin.timeout", defaultBiginTimeout.String())
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
@@ -140,6 +160,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if _, err := time.LoadLocation(currentTimeDefaultTimezone); err != nil {
 		return nil, fmt.Errorf("TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE must be a valid IANA timezone, got %q: %w", currentTimeDefaultTimezone, err)
 	}
+	biginConfiguration, err := loadBiginToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	mcpServers, err := loadMCPServerConfigurations(configuration)
 	if err != nil {
 		return nil, err
@@ -171,6 +195,7 @@ func LoadFromEnvironment() (*Config, error) {
 				Enabled:         currentTimeEnabled,
 				DefaultTimezone: currentTimeDefaultTimezone,
 			},
+			Bigin:      biginConfiguration,
 			MCPServers: mcpServers,
 		},
 		AccessPIN:                accessPIN,
@@ -179,6 +204,47 @@ func LoadFromEnvironment() (*Config, error) {
 		AppBaseURL:               appBaseURL,
 		TelegramWebAppAuthMaxAge: telegramWebAppAuthMaxAge,
 	}, nil
+}
+
+// loadBiginToolConfiguration enables Bigin only for a complete credential set
+// and validates its optional endpoint and timeout overrides.
+func loadBiginToolConfiguration(configuration *viper.Viper) (BiginToolConfig, error) {
+	biginConfiguration := BiginToolConfig{
+		RefreshToken: strings.TrimSpace(configuration.GetString("tools.bigin.refresh_token")),
+		ClientID:     strings.TrimSpace(configuration.GetString("tools.bigin.client_id")),
+		ClientSecret: strings.TrimSpace(configuration.GetString("tools.bigin.client_secret")),
+		AccountsURL:  strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.accounts_url")), "/"),
+		APIURL:       strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.api_url")), "/"),
+	}
+
+	configuredCredentialCount := 0
+	for _, credential := range []string{biginConfiguration.RefreshToken, biginConfiguration.ClientID, biginConfiguration.ClientSecret} {
+		if credential != "" {
+			configuredCredentialCount++
+		}
+	}
+	if configuredCredentialCount == 0 {
+		return biginConfiguration, nil
+	}
+	if configuredCredentialCount != 3 {
+		return BiginToolConfig{}, fmt.Errorf("TOOLS_BIGIN_REFRESH_TOKEN, TOOLS_BIGIN_CLIENT_ID, and TOOLS_BIGIN_CLIENT_SECRET must either all be configured or all be empty")
+	}
+
+	var err error
+	biginConfiguration.AccountsURL, err = optionalHTTPURL(biginConfiguration.AccountsURL, "TOOLS_BIGIN_ACCOUNTS_URL")
+	if err != nil {
+		return BiginToolConfig{}, err
+	}
+	biginConfiguration.APIURL, err = optionalHTTPURL(biginConfiguration.APIURL, "TOOLS_BIGIN_API_URL")
+	if err != nil {
+		return BiginToolConfig{}, err
+	}
+	biginConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.bigin.timeout"), "TOOLS_BIGIN_TIMEOUT")
+	if err != nil {
+		return BiginToolConfig{}, err
+	}
+	biginConfiguration.Enabled = true
+	return biginConfiguration, nil
 }
 
 // loadMCPServerConfigurations loads the dynamic TOOLS_MCPS list and applies

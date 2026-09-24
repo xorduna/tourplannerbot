@@ -279,6 +279,12 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "📝 Preparant la proposta…"
 	case normalizedToolName == "update_draft":
 		return "📝 Actualitzant la proposta…"
+	case normalizedToolName == "get_bigin_deal":
+		return "📇 Consultant el deal a Bigin…"
+	case normalizedToolName == "create_bigin_email_draft":
+		return "✉️ Desant l’esborrany a Bigin…"
+	case normalizedToolName == "search_bigin_contacts":
+		return "👤 Buscant contactes a Bigin…"
 	case normalizedToolSource == "openstreetmap" || strings.Contains(normalizedToolName, "openstreetmap"):
 		return fmt.Sprintf("🗺️ Utilitzant OpenStreetMap per %s…", openStreetMapToolPurpose(normalizedToolName))
 	case normalizedToolSource == "wikipedia" || strings.Contains(normalizedToolName, "wikipedia") || isWikipediaToolName(normalizedToolName):
