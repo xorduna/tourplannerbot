@@ -19,6 +19,7 @@ import (
 	"tourplannerbot/internal/prompt"
 	"tourplannerbot/internal/telegram"
 	applicationTools "tourplannerbot/internal/tools"
+	"tourplannerbot/internal/tools/bigin"
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/draft"
 	"tourplannerbot/internal/tools/mcpclient"
@@ -87,6 +88,38 @@ func run() error {
 		if err := toolRegistry.Register(currentTimeTool); err != nil {
 			logger.Error("failed to register current_time tool", "error", err)
 			return fmt.Errorf("register current_time tool: %w", err)
+		}
+	}
+	if applicationConfig.Tools.Bigin.Enabled {
+		biginClient, err := bigin.NewClient(bigin.Config{
+			RefreshToken: applicationConfig.Tools.Bigin.RefreshToken,
+			ClientID:     applicationConfig.Tools.Bigin.ClientID,
+			ClientSecret: applicationConfig.Tools.Bigin.ClientSecret,
+			AccountsURL:  applicationConfig.Tools.Bigin.AccountsURL,
+			APIURL:       applicationConfig.Tools.Bigin.APIURL,
+			CallTimeout:  applicationConfig.Tools.Bigin.CallTimeout,
+		})
+		if err != nil {
+			logger.Error("failed to initialize Bigin client", "error", err)
+			return fmt.Errorf("initialize Bigin client: %w", err)
+		}
+		getBiginDealTool, err := bigin.NewGetDeal(biginClient)
+		if err != nil {
+			logger.Error("failed to initialize get_bigin_deal tool", "error", err)
+			return fmt.Errorf("initialize get_bigin_deal tool: %w", err)
+		}
+		if err := toolRegistry.Register(getBiginDealTool); err != nil {
+			logger.Error("failed to register get_bigin_deal tool", "error", err)
+			return fmt.Errorf("register get_bigin_deal tool: %w", err)
+		}
+		searchBiginContactsTool, err := bigin.NewSearchContacts(biginClient)
+		if err != nil {
+			logger.Error("failed to initialize search_bigin_contacts tool", "error", err)
+			return fmt.Errorf("initialize search_bigin_contacts tool: %w", err)
+		}
+		if err := toolRegistry.Register(searchBiginContactsTool); err != nil {
+			logger.Error("failed to register search_bigin_contacts tool", "error", err)
+			return fmt.Errorf("register search_bigin_contacts tool: %w", err)
 		}
 	}
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)

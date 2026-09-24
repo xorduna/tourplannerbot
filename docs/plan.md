@@ -69,6 +69,7 @@ internal/
     registry.go          # Register/lookup/execute tools
     types.go             # Shared native/MCP tool contract
     currenttime/         # Native current_time tool
+    bigin/               # Native Bigin tools and OAuth client
   trip/
     service.go           # Trip lifecycle (create, load, update summary)
     repository.go        # Postgres queries for trips
@@ -341,6 +342,11 @@ Each one is a single task for Claude Code / Copilot.
 - Each tool is independent: implement handler, register, done
 - Candidates: `find_restaurants`, `get_weather`, `check_availability`
 - Connect to real APIs as needed (separate Python scraper service, Google Places, etc.)
+
+### Slice 10 — Bigin CRM integration (in progress)
+- ✅ Refresh short-lived Zoho access tokens from the configured EU OAuth credentials
+- ✅ Retrieve one Bigin deal by pipeline record ID with `get_bigin_deal`
+- ✅ Retrieve contacts by ID, general text, email, or phone with `search_bigin_contacts`
 
 ### Future (not now)
 - Web dashboard to view trips and conversations
