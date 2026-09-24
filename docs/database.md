@@ -8,6 +8,14 @@ methods:
   - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
   - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
   - database.UpdateDraft: Atomically saves a validated draft at its expected revision.
+  - database.FindTelegramDealTopic: Finds the Telegram topic associated with a Bigin deal.
+  - database.FindTelegramDealTopicByMessageThreadID: Resolves an incoming Telegram topic back to its Bigin deal.
+  - database.CreateTelegramDealTopic: Stores a Bigin deal-to-Telegram topic association.
+  - database.DeleteTelegramDealTopic: Removes a mapping after Telegram confirms that its topic was deleted.
+  - database.NewTelegramDealTopicStore: Provides late-bound PostgreSQL access while startup health endpoints remain available.
+  - bigin.Client.GetDealName: Retrieves the current deal name from Bigin.
+  - webapp.DealTopicService.ResolveTopicURL: Resolves or creates a deal topic and returns its private Telegram URL.
+  - webapp.LLMDealTopicIntroductionGenerator.GenerateIntroduction: Creates the first topic message from current Bigin data.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
@@ -16,8 +24,14 @@ depends_on:
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
   - migrations/00005_create_drafts.sql
+  - migrations/00006_create_telegram_deal_topics.sql
   - internal/database/database.go
   - internal/database/drafts.go
+  - internal/database/telegram_deal_topics.go
+  - internal/models/telegram_deal_topic.go
+  - internal/tools/bigin/get_deal.go
+  - internal/webapp/deal_topics.go
+  - internal/webapp/deal_topic_introduction.go
   - internal/webapp/drafts.go
   - internal/database/readiness.go
   - internal/models/allowed_user.go
@@ -38,6 +52,30 @@ The bot uses GORM with PostgreSQL. `DATABASE_URL` is required at startup; the Te
 The `messages` table isolates history by `(chat_id, message_thread_id)`. Telegram uses a zero `message_thread_id` for private chats and groups without forum topics, while each forum topic has its own non-zero thread ID. This lets a topic represent one tour deal without leaking context from other topics in the same group. Migration `00004` adds `tool` and `reasoning` roles plus the call ID, tool name, and JSON arguments needed to reconstruct stateless Responses API function calls, encrypted reasoning state, and outputs.
 
 The `llm_requests` table records each LLM attempt, including failures. It stores provider/model, duration, token usage, an optional immutable cost estimate, and a link to the source user message; it intentionally does not duplicate prompt or response text. Use its timestamp, model, and conversation indexes for consumption reports.
+
+The `telegram_deal_topics` table stores only a Bigin `deal_id`, its Telegram
+`message_thread_id`, and the association creation time. Deal names and all
+other deal fields remain in Bigin. There is no environment column because each
+`ENV` deployment points to its own database. For each message in an associated
+topic, the handler resolves the mapping by `message_thread_id`, retrieves the
+complete current record from Bigin, and adds it to model context without
+persisting the response. The configured private forum is trusted for bot use;
+PIN authentication remains active in private chats and other groups.
+
+The late-bound GORM connection used during startup belongs to the database
+package. The web endpoint depends only on the small `DealTopicStore` contract
+and contains no PostgreSQL initialization or connection management.
+
+The HTTP deal-topic endpoint verifies a stored topic with a lightweight
+Telegram action before redirecting. Only an explicit missing-topic response
+removes the mapping and recreates the forum topic; permission, rate-limit, and
+temporary Telegram errors preserve the existing mapping and fail the request.
+After creating or recreating a topic, the endpoint uses the configured LLM to
+generate a concise Catalan introduction from the already fetched Bigin
+response and sends it to the new thread. Neither the source deal JSON nor the
+generated introduction is persisted. Generation falls back to a deterministic
+welcome message, and introduction delivery remains non-fatal to the mapping and
+redirect.
 
 The `drafts` table is the canonical store for editable text. A draft has a
 public random UUID, Tiptap JSON plus its plain-text projection, and a revision
@@ -94,5 +132,5 @@ trusted source before deployment.
 
 Before enabling this flow, configure these GitHub Actions values:
 
-- Repository variables: `DO_APP_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
+- Repository variables: `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
 - Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `ACCESS_PIN`, `TOOLS_BIGIN_REFRESH_TOKEN`, `TOOLS_BIGIN_CLIENT_SECRET`, `TOOLS_GMAIL_REFRESH_TOKEN`, and `TOOLS_GMAIL_CLIENT_SECRET`.

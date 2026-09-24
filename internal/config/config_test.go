@@ -10,6 +10,8 @@ import (
 func setRequiredEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("TELEGRAM_BOT_TOKEN", "test-telegram-token")
+	t.Setenv("TELEGRAM_GROUP_CHAT_ID", "-1001234567890")
+	t.Setenv("ENV", "test")
 	t.Setenv("DATABASE_URL", "postgres://example")
 	t.Setenv("OPENAI_API_KEY", "test-openai-key")
 	t.Setenv("OPENAI_MODEL", "")
@@ -68,6 +70,12 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	if applicationConfig.OpenAIModel != "gpt-5.5" {
 		t.Errorf("OpenAIModel = %q, want gpt-5.5", applicationConfig.OpenAIModel)
 	}
+	if applicationConfig.Environment != "test" {
+		t.Errorf("Environment = %q, want test", applicationConfig.Environment)
+	}
+	if applicationConfig.TelegramGroupChatID != -1001234567890 {
+		t.Errorf("TelegramGroupChatID = %d, want -1001234567890", applicationConfig.TelegramGroupChatID)
+	}
 	if applicationConfig.OpenAITranscriptionModel != "gpt-transcribe" {
 		t.Errorf("OpenAITranscriptionModel = %q, want gpt-transcribe", applicationConfig.OpenAITranscriptionModel)
 	}
@@ -97,6 +105,20 @@ func TestLoadFromEnvironmentUsesGPT55ByDefault(t *testing.T) {
 	}
 	if applicationConfig.LLMPricing.InputMicroUSDPerMillion != 5_000_000 || applicationConfig.LLMPricing.Version != "2026-09-18-openai" {
 		t.Errorf("LLMPricing = %#v", applicationConfig.LLMPricing)
+	}
+}
+
+// TestLoadFromEnvironmentRejectsInvalidTelegramGroupChatID verifies topic URLs
+// can only be constructed from private supergroup identifiers.
+func TestLoadFromEnvironmentRejectsInvalidTelegramGroupChatID(t *testing.T) {
+	for _, invalidChatID := range []string{"", "1234567890", "-100", "-100abc"} {
+		t.Run(invalidChatID, func(t *testing.T) {
+			setRequiredEnvironment(t)
+			t.Setenv("TELEGRAM_GROUP_CHAT_ID", invalidChatID)
+			if _, err := LoadFromEnvironment(); err == nil {
+				t.Fatal("LoadFromEnvironment returned nil error for invalid Telegram group chat ID")
+			}
+		})
 	}
 }
 
