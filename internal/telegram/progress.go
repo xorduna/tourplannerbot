@@ -281,8 +281,6 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "📝 Actualitzant la proposta…"
 	case normalizedToolName == "get_bigin_deal":
 		return "📇 Consultant el deal a Bigin…"
-	case normalizedToolName == "create_bigin_email_draft":
-		return "✉️ Desant l’esborrany a Bigin…"
 	case normalizedToolName == "search_bigin_contacts":
 		return "👤 Buscant contactes a Bigin…"
 	case normalizedToolSource == "openstreetmap" || strings.Contains(normalizedToolName, "openstreetmap"):

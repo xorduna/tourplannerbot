@@ -78,7 +78,6 @@ func TestToolProgressText(t *testing.T) {
 		{name: "create draft", toolName: "create_draft", toolSource: "native", expectedText: "📝 Preparant la proposta…"},
 		{name: "update draft", toolName: "update_draft", toolSource: "native", expectedText: "📝 Actualitzant la proposta…"},
 		{name: "Bigin deal", toolName: "get_bigin_deal", toolSource: "bigin", expectedText: "📇 Consultant el deal a Bigin…"},
-		{name: "Bigin email draft", toolName: "create_bigin_email_draft", toolSource: "bigin", expectedText: "✉️ Desant l’esborrany a Bigin…"},
 		{name: "Bigin contacts", toolName: "search_bigin_contacts", toolSource: "bigin", expectedText: "👤 Buscant contactes a Bigin…"},
 		{name: "OpenStreetMap nearby", toolName: "query_nearby", toolSource: "openstreetmap", expectedText: "🗺️ Utilitzant OpenStreetMap per buscar llocs propers…"},
 		{name: "Wikipedia search", toolName: "search_wikipedia", toolSource: "wikipedia", expectedText: "🔎 Utilitzant Wikipedia per buscar informació…"},

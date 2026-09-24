@@ -83,34 +83,18 @@ func NewClient(configuration Config) (*Client, error) {
 // get performs one authenticated GET request. An unauthorized response
 // invalidates the cached token and is retried once with a newly refreshed one.
 func (client *Client) get(ctx context.Context, apiPath string) ([]byte, error) {
-	return client.doAuthenticatedJSON(ctx, http.MethodGet, apiPath, nil)
-}
-
-// postJSON performs an authenticated JSON POST. It is intentionally kept
-// package-private so each mutating tool must choose and own its exact endpoint.
-func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody []byte) ([]byte, error) {
-	return client.doAuthenticatedJSON(ctx, http.MethodPost, apiPath, requestBody)
-}
-
-// doAuthenticatedJSON performs one authenticated request. An unauthorized
-// response invalidates the cached token and is retried once with a newly
-// refreshed one.
-func (client *Client) doAuthenticatedJSON(ctx context.Context, requestMethod string, apiPath string, requestBody []byte) ([]byte, error) {
 	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
 		accessToken, err := client.validAccessToken(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		request, err := http.NewRequestWithContext(ctx, requestMethod, client.apiURL+apiPath, bytes.NewReader(requestBody))
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.apiURL+apiPath, nil)
 		if err != nil {
 			return nil, fmt.Errorf("create Bigin request: %w", err)
 		}
 		request.Header.Set("Authorization", "Zoho-oauthtoken "+accessToken)
 		request.Header.Set("Accept", "application/json")
-		if requestBody != nil {
-			request.Header.Set("Content-Type", "application/json")
-		}
 
 		response, err := client.httpClient.Do(request)
 		if err != nil {

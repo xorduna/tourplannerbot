@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSearchContactsBuildsDocumentedRequests verifies each lookup mode uses the
@@ -114,4 +115,23 @@ func TestSearchContactsDefinitionIsStrict(t *testing.T) {
 	if definition.Name != "search_bigin_contacts" || definition.Source != "bigin" || !definition.Strict {
 		t.Errorf("definition = %#v", definition)
 	}
+}
+
+// newTestClient creates a Bigin client whose traffic is fully contained by the
+// provided in-memory transport.
+func newTestClient(t *testing.T, transport http.RoundTripper) *Client {
+	t.Helper()
+	biginClient, err := NewClient(Config{
+		RefreshToken: "refresh-token",
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		AccountsURL:  "https://accounts.example.com",
+		APIURL:       "https://api.example.com",
+		CallTimeout:  time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned an error: %v", err)
+	}
+	biginClient.httpClient.Transport = transport
+	return biginClient
 }

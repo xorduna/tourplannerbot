@@ -347,10 +347,6 @@ Each one is a single task for Claude Code / Copilot.
 - ✅ Refresh short-lived Zoho access tokens from the configured EU OAuth credentials
 - ✅ Retrieve one Bigin deal by pipeline record ID with `get_bigin_deal`
 - ✅ Retrieve contacts by ID, general text, email, or phone with `search_bigin_contacts`
-- ✅ Implement and test the CRM v8 email-draft payload without any API send operation
-- ❌ Live Bigin OAuth token is rejected by the CRM v8 draft endpoint with `OAUTH_SCOPE_MISMATCH`
-- ⏸️ Keep `create_bigin_email_draft` unregistered while OAuth scopes remain unchanged
-- **Safety boundary**: email delivery always remains a manual action in the Bigin UI
 
 ### Future (not now)
 - Web dashboard to view trips and conversations
