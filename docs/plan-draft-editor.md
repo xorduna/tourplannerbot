@@ -353,6 +353,9 @@ italic, bulleted/numbered lists, undo, and redo. It saves with the expected
 revision and has dirty, saving, saved, conflict, and error states. Browser and
 Telegram close confirmations protect unsaved changes. The server accepts only
 the corresponding closed Tiptap schema and derives the plain-text projection.
+The Mini App shell is constrained to the Telegram viewport: the title, subject,
+formatting toolbar, and status remain visible while only the Tiptap content area
+scrolls vertically.
 
 ### Slice 7 — Draft creation by the agent ✅ Complete
 

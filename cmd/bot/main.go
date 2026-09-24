@@ -22,6 +22,7 @@ import (
 	"tourplannerbot/internal/tools/bigin"
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/draft"
+	"tourplannerbot/internal/tools/gmail"
 	"tourplannerbot/internal/tools/mcpclient"
 	"tourplannerbot/internal/webapp"
 
@@ -82,6 +83,7 @@ func run() error {
 	logger.Info("tool initialization started",
 		"current_time_enabled", applicationConfig.Tools.CurrentTime.Enabled,
 		"bigin_enabled", applicationConfig.Tools.Bigin.Enabled,
+		"gmail_enabled", applicationConfig.Tools.Gmail.Enabled,
 		"mcp_server_configuration_count", len(applicationConfig.Tools.MCPServers),
 		"status", "initializing",
 	)
@@ -145,6 +147,55 @@ func run() error {
 		logger.Info("Bigin tools are disabled",
 			"tool_source", "bigin",
 			"planned_tools", []string{"get_bigin_deal", "search_bigin_contacts"},
+			"status", "disabled",
+			"reason", "OAuth credentials are not configured",
+		)
+	}
+	if applicationConfig.Tools.Gmail.Enabled {
+		gmailClientInitializationStartedAt := time.Now()
+		logger.Info("initializing Gmail tool client",
+			"tool_source", "gmail",
+			"planned_tools", []string{"create_gmail_draft", "update_gmail_draft"},
+			"api_url", applicationConfig.Tools.Gmail.APIURL,
+			"timeout", applicationConfig.Tools.Gmail.CallTimeout.String(),
+			"status", "initializing",
+		)
+		gmailClient, err := gmail.NewClient(gmail.Config{
+			RefreshToken: applicationConfig.Tools.Gmail.RefreshToken,
+			ClientID:     applicationConfig.Tools.Gmail.ClientID,
+			ClientSecret: applicationConfig.Tools.Gmail.ClientSecret,
+			OAuthURL:     applicationConfig.Tools.Gmail.OAuthURL,
+			APIURL:       applicationConfig.Tools.Gmail.APIURL,
+			CallTimeout:  applicationConfig.Tools.Gmail.CallTimeout,
+		})
+		if err != nil {
+			logger.Error("failed to initialize Gmail tool client",
+				"tool_source", "gmail",
+				"duration_ms", time.Since(gmailClientInitializationStartedAt).Milliseconds(),
+				"status", "failed",
+				"error", err,
+			)
+			return fmt.Errorf("initialize Gmail client: %w", err)
+		}
+		logger.Info("Gmail tool client initialized",
+			"tool_source", "gmail",
+			"duration_ms", time.Since(gmailClientInitializationStartedAt).Milliseconds(),
+			"status", "ready",
+		)
+		if err := initializeAndRegisterTool(logger, toolRegistry, "create_gmail_draft", "gmail", func() (applicationTools.Tool, error) {
+			return gmail.NewCreateDraft(gmailClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register create_gmail_draft tool: %w", err)
+		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "update_gmail_draft", "gmail", func() (applicationTools.Tool, error) {
+			return gmail.NewUpdateDraft(gmailClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register update_gmail_draft tool: %w", err)
+		}
+	} else {
+		logger.Info("Gmail tools are disabled",
+			"tool_source", "gmail",
+			"planned_tools", []string{"create_gmail_draft", "update_gmail_draft"},
 			"status", "disabled",
 			"reason", "OAuth credentials are not configured",
 		)

@@ -70,6 +70,7 @@ internal/
     types.go             # Shared native/MCP tool contract
     currenttime/         # Native current_time tool
     bigin/               # Native Bigin tools and OAuth client
+    gmail/               # Native Gmail tools and OAuth client
   trip/
     service.go           # Trip lifecycle (create, load, update summary)
     repository.go        # Postgres queries for trips
@@ -350,6 +351,8 @@ Each one is a single task for Claude Code / Copilot.
 - ✅ Refresh short-lived Zoho access tokens from the configured EU OAuth credentials
 - ✅ Retrieve one Bigin deal by pipeline record ID with `get_bigin_deal`
 - ✅ Retrieve contacts by ID, general text, email, or phone with `search_bigin_contacts`
+- ✅ Create unsent Gmail drafts with `create_gmail_draft`
+- ✅ Replace unsent Gmail drafts with `update_gmail_draft`
 
 ### Future (not now)
 - Web dashboard to view trips and conversations

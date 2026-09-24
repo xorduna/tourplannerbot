@@ -11,6 +11,8 @@ methods:
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
+  - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
+  - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
   - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
   - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
@@ -23,6 +25,9 @@ depends_on:
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
+  - internal/tools/gmail/client.go
+  - internal/tools/gmail/create_draft.go
+  - internal/tools/gmail/update_draft.go
   - internal/tools/draft/create_draft.go
   - internal/tools/draft/update_draft.go
   - internal/tools/mcpclient/client.go
@@ -98,6 +103,38 @@ The default endpoints are `https://accounts.zoho.eu` and
 `https://www.zohoapis.eu`; they can be overridden with
 `TOOLS_BIGIN_ACCOUNTS_URL` and `TOOLS_BIGIN_API_URL`. `TOOLS_BIGIN_TIMEOUT`
 defaults to `30s`.
+
+## Native Gmail tools
+
+`create_gmail_draft(to, cc, bcc, subject, body)` creates an unsent plain-text
+draft in the OAuth user's Gmail mailbox. It is exposed under this explicit name
+because `create_draft` already belongs to the application's collaborative draft
+editor. `to`, `cc`, and `bcc` are arrays of RFC mailbox strings; strict calls
+must provide `cc` and `bcc` as empty arrays when unused. The tool validates and
+canonicalizes every recipient, builds a CRLF-normalized RFC 2822 MIME message,
+base64url-encodes it in `message.raw`, and calls
+`POST /gmail/v1/users/me/drafts`. It returns only the draft, message, and
+optional thread IDs. It never sends mail.
+
+`update_gmail_draft(draft_id, to, cc, bcc, subject, body)` replaces the entire
+message inside an existing draft through
+`PUT /gmail/v1/users/me/drafts/{draft_id}`. Gmail keeps the draft resource ID
+stable but replaces its underlying message, so the returned message ID may
+change. The caller must therefore provide the complete recipient lists,
+subject, and body rather than only the changed fields. The tool verifies that
+the returned draft ID matches the requested resource and never sends mail.
+
+The integration is enabled automatically when `TOOLS_GMAIL_REFRESH_TOKEN`,
+`TOOLS_GMAIL_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_SECRET` are all present. A
+partial set is a startup error and a completely absent set disables Gmail. The
+refresh token must have been authorized with the
+`https://www.googleapis.com/auth/gmail.compose` scope. Access tokens are
+refreshed at `https://oauth2.googleapis.com/token`, cached until shortly before
+expiry, and refreshed once more after an HTTP 401.
+
+`TOOLS_GMAIL_OAUTH_URL` and `TOOLS_GMAIL_API_URL` override the default Google
+endpoints for tests or compatible gateways. `TOOLS_GMAIL_TIMEOUT` defaults to
+`30s`. Credentials and complete MIME content are excluded from logs.
 
 ## Calling and persistence
 

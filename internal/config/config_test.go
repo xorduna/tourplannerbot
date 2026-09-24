@@ -27,6 +27,12 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("TOOLS_BIGIN_ACCOUNTS_URL", "")
 	t.Setenv("TOOLS_BIGIN_API_URL", "")
 	t.Setenv("TOOLS_BIGIN_TIMEOUT", "")
+	t.Setenv("TOOLS_GMAIL_REFRESH_TOKEN", "")
+	t.Setenv("TOOLS_GMAIL_CLIENT_ID", "")
+	t.Setenv("TOOLS_GMAIL_CLIENT_SECRET", "")
+	t.Setenv("TOOLS_GMAIL_OAUTH_URL", "")
+	t.Setenv("TOOLS_GMAIL_API_URL", "")
+	t.Setenv("TOOLS_GMAIL_TIMEOUT", "")
 	t.Setenv("TOOLS_WIKIPEDIA_ENABLED", "")
 	t.Setenv("TOOLS_WIKIPEDIA_URL", "")
 	t.Setenv("TOOLS_WIKIPEDIA_AUTH_TYPE", "")
@@ -215,6 +221,43 @@ func TestLoadFromEnvironmentRejectsPartialBiginCredentials(t *testing.T) {
 
 	if _, err := LoadFromEnvironment(); err == nil {
 		t.Fatal("LoadFromEnvironment returned nil error for partial Bigin credentials")
+	}
+}
+
+// TestLoadFromEnvironmentEnablesGmailForCompleteCredentials verifies the three
+// OAuth values enable the native Gmail integration with safe defaults.
+func TestLoadFromEnvironmentEnablesGmailForCompleteCredentials(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_GMAIL_REFRESH_TOKEN", "refresh-token")
+	t.Setenv("TOOLS_GMAIL_CLIENT_ID", "client-id")
+	t.Setenv("TOOLS_GMAIL_CLIENT_SECRET", "client-secret")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.Gmail.Enabled {
+		t.Fatal("Tools.Gmail.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.Gmail.OAuthURL != "https://oauth2.googleapis.com/token" {
+		t.Errorf("Tools.Gmail.OAuthURL = %q", applicationConfig.Tools.Gmail.OAuthURL)
+	}
+	if applicationConfig.Tools.Gmail.APIURL != "https://gmail.googleapis.com" {
+		t.Errorf("Tools.Gmail.APIURL = %q", applicationConfig.Tools.Gmail.APIURL)
+	}
+	if applicationConfig.Tools.Gmail.CallTimeout != 30*time.Second {
+		t.Errorf("Tools.Gmail.CallTimeout = %s, want 30s", applicationConfig.Tools.Gmail.CallTimeout)
+	}
+}
+
+// TestLoadFromEnvironmentRejectsPartialGmailCredentials prevents startup with
+// an integration that cannot refresh an access token.
+func TestLoadFromEnvironmentRejectsPartialGmailCredentials(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_GMAIL_CLIENT_ID", "client-id")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for partial Gmail credentials")
 	}
 }
 

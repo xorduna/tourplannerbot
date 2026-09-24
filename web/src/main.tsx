@@ -236,7 +236,7 @@ function App() {
   };
 
   return (
-    <main class="shell" style={{ "min-height": `${viewportHeight()}px` }}>
+    <main class="shell" style={{ height: `${viewportHeight()}px` }}>
       <section class="workspace" aria-labelledby="miniapp-title">
         <header class="workspace-header">
           <div class="title-row">

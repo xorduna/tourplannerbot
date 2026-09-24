@@ -20,6 +20,14 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   margin: 0;
   background: var(--telegram-bg-color);
@@ -34,18 +42,24 @@ textarea {
 .shell {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
   color: var(--telegram-text-color);
 }
 
 .workspace {
+  --workspace-right-padding: max(14px, var(--telegram-safe-area-right));
   width: 100%;
   flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: max(16px, var(--telegram-safe-area-top)) max(14px, var(--telegram-safe-area-right)) 12px max(14px, var(--telegram-safe-area-left));
+  overflow: hidden;
+  padding: max(16px, var(--telegram-safe-area-top)) var(--workspace-right-padding) 12px max(14px, var(--telegram-safe-area-left));
 }
 
 .workspace-header {
+  flex: 0 0 auto;
   margin-bottom: 14px;
 }
 
@@ -78,6 +92,7 @@ h1 {
   gap: 10px;
   align-items: center;
   width: 100%;
+  flex: 0 0 auto;
   min-height: 32px;
   padding: 6px max(14px, var(--telegram-safe-area-right)) max(6px, var(--telegram-safe-area-bottom)) max(14px, var(--telegram-safe-area-left));
   border-top: 1px solid color-mix(in srgb, var(--telegram-text-color) 10%, transparent);
@@ -115,6 +130,7 @@ h1 {
   width: 100%;
   display: flex;
   flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
 }
 
@@ -136,6 +152,7 @@ h1 {
   gap: 10px;
   align-items: baseline;
   width: 100%;
+  flex: 0 0 auto;
   margin: 2px 0 12px;
 }
 
@@ -168,6 +185,7 @@ h1 {
   gap: 6px;
   align-items: center;
   width: calc(100% + 28px);
+  flex: 0 0 auto;
   margin: 0 -14px 12px;
   padding: 8px 14px;
   border-top: 1px solid color-mix(in srgb, var(--telegram-text-color) 10%, transparent);
@@ -207,16 +225,21 @@ h1 {
 }
 
 .tiptap-editor {
-  width: 100%;
+  width: calc(100% + var(--workspace-right-padding));
   flex: 1 1 auto;
-  min-height: 12rem;
+  min-height: 0;
+  margin-right: calc(-1 * var(--workspace-right-padding));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   font-size: 1rem;
   line-height: 1.55;
 }
 
 .tiptap-editor .tiptap {
-  height: 100%;
-  min-height: 12rem;
+  min-height: 100%;
+  padding: 0 var(--workspace-right-padding) 1rem 0;
   outline: none;
 }
 
