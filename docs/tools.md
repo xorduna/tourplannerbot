@@ -105,6 +105,15 @@ The OpenAI client sends registered definitions as Responses API function tools. 
 
 Execution errors become JSON tool results with an `error` property. This gives the model an opportunity to recover without terminating the application process.
 
+Startup emits an INFO-level lifecycle for every tool. Native tools log their
+`initialize`, `register`, and `ready` phases with source and duration. Disabled
+native integrations and MCP servers log a non-sensitive reason. MCP discovery
+logs each enabled server, the exact tool names it advertised, registration
+failures, and a discovery summary. Once PostgreSQL-backed tools are registered,
+the final inventory contains the deterministic list of available tool names,
+the count, a source-to-tools mapping, and the number of live MCP connections.
+Credentials are never included in these entries.
+
 Every execution emits human-readable log messages such as `using tool current_time` and `tool current_time use completed in 1.2ms`. The same entries contain structured conversation identifiers, loop iteration, tool name, provider call ID, outcome, and duration in milliseconds. Successful calls also record the result length. Arguments and complete results are deliberately excluded from logs to avoid leaking sensitive data.
 
 The user sees the same lifecycle through one editable Telegram status message. It starts as `💭 Pensant…`, changes to a human description of the active tool, and then to `✍️ Preparant la resposta…` before the next model call. These descriptions identify Wikipedia, OpenStreetMap, or the native time tool and the general operation, but deliberately omit raw tool arguments.

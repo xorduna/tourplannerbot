@@ -8,6 +8,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Conversation history isolated by Telegram chat and topic
 - Config loaded from environment variables through Viper
 - Native tool registry and bounded LLM tool-calling loop
+- Detailed startup logs for configured, disabled, discovered, and successfully registered tools
 - Dynamic MCP tool discovery over Streamable HTTP
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
