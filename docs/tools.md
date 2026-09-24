@@ -11,6 +11,7 @@ methods:
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
+  - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -25,6 +26,7 @@ depends_on:
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
+  - internal/tools/bigin/add_deal_note.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
   - internal/tools/gmail/update_draft.go
@@ -91,6 +93,15 @@ direct `GET /bigin/v2/Contacts/{record_id}` lookup and is preferred whenever a
 contact ID is available. The `word`, `email`, and `phone` modes call the
 documented Contacts search endpoint. A normal HTTP 204 no-results response is
 normalized to `{"data":[]}` for the model.
+
+`add_bigin_deal_note(deal_id, title, content)` creates one note through
+`POST /bigin/v2/Pipelines/{record_id}/Notes`. The title is optional at the Bigin
+API level; callers pass an empty string when it is not needed. The tool is
+explicitly limited to user-requested writes, validates the numeric deal ID and
+note content locally, and returns Bigin's complete operation response. The
+refresh token needs pipeline creation access plus note creation access; the
+minimal scopes documented by Bigin are `ZohoBigin.modules.pipelines.CREATE` and
+`ZohoBigin.modules.notes.CREATE`.
 
 The tool is enabled automatically when `TOOLS_BIGIN_REFRESH_TOKEN`,
 `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_BIGIN_CLIENT_SECRET` are all present. A

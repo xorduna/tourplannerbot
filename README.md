@@ -12,7 +12,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Dynamic MCP tool discovery over Streamable HTTP
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
-- Bigin deal lookup and contact search by ID, name, email, or phone, with automatic Zoho OAuth token refresh
+- Bigin deal lookup, contact search, and deal-note creation, with automatic Zoho OAuth token refresh
 - On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
 - Gmail draft creation and full-message updates with automatic Google OAuth token refresh
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
@@ -230,7 +230,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOL_CALL_MAX_ITERATIONS` | no | `10` | Max tool-calling loop iterations |
 | `TOOLS_CURRENT_TIME_ENABLED` | no | `true` | Registers the native `current_time` tool |
 | `TOOLS_CURRENT_TIME_DEFAULT_TIMEZONE` | no | `Europe/Madrid` | Default IANA timezone used when a call omits `timezone` |
-| `TOOLS_BIGIN_REFRESH_TOKEN` | together | — | Bigin OAuth refresh token; all three Bigin credentials enable the native Bigin tools |
+| `TOOLS_BIGIN_REFRESH_TOKEN` | together | — | Bigin OAuth refresh token; deal-note creation requires pipeline create and notes create scopes |
 | `TOOLS_BIGIN_CLIENT_ID` | together | — | Bigin OAuth client ID |
 | `TOOLS_BIGIN_CLIENT_SECRET` | together | — | Bigin OAuth client secret; never logged |
 | `TOOLS_BIGIN_ACCOUNTS_URL` | no | `https://accounts.zoho.eu` | Zoho Accounts base URL for OAuth refreshes |
