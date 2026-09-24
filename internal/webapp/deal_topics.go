@@ -18,7 +18,6 @@ import (
 	telegramBot "github.com/go-telegram/bot"
 	telegramModels "github.com/go-telegram/bot/models"
 	"github.com/labstack/echo/v5"
-	"gorm.io/gorm"
 )
 
 var (
@@ -52,59 +51,6 @@ type TelegramForumTopicCreator interface {
 	CreateForumTopic(applicationContext context.Context, parameters *telegramBot.CreateForumTopicParams) (*telegramModels.ForumTopic, error)
 	SendChatAction(applicationContext context.Context, parameters *telegramBot.SendChatActionParams) (bool, error)
 	SendMessage(applicationContext context.Context, parameters *telegramBot.SendMessageParams) (*telegramModels.Message, error)
-}
-
-// GORMDealTopicStore provides database-backed deal-topic associations. Its
-// connection is supplied after the application's startup retry succeeds.
-type GORMDealTopicStore struct {
-	databaseConnectionMutex sync.RWMutex
-	databaseConnection      *gorm.DB
-}
-
-// NewGORMDealTopicStore creates a store without a database connection.
-func NewGORMDealTopicStore() *GORMDealTopicStore {
-	return &GORMDealTopicStore{}
-}
-
-// SetDatabaseConnection makes a GORM connection available to the store.
-func (dealTopicStore *GORMDealTopicStore) SetDatabaseConnection(databaseConnection *gorm.DB) {
-	dealTopicStore.databaseConnectionMutex.Lock()
-	defer dealTopicStore.databaseConnectionMutex.Unlock()
-	dealTopicStore.databaseConnection = databaseConnection
-}
-
-// FindTelegramDealTopic retrieves one persisted deal-topic association.
-func (dealTopicStore *GORMDealTopicStore) FindTelegramDealTopic(applicationContext context.Context, dealID string) (*databaseModels.TelegramDealTopic, error) {
-	databaseConnection := dealTopicStore.currentDatabaseConnection()
-	if databaseConnection == nil {
-		return nil, ErrDealTopicServiceUnavailable
-	}
-	return database.FindTelegramDealTopic(applicationContext, databaseConnection, dealID)
-}
-
-// CreateTelegramDealTopic persists one deal-topic association.
-func (dealTopicStore *GORMDealTopicStore) CreateTelegramDealTopic(applicationContext context.Context, dealID string, messageThreadID int64) (*databaseModels.TelegramDealTopic, error) {
-	databaseConnection := dealTopicStore.currentDatabaseConnection()
-	if databaseConnection == nil {
-		return nil, ErrDealTopicServiceUnavailable
-	}
-	return database.CreateTelegramDealTopic(applicationContext, databaseConnection, dealID, messageThreadID)
-}
-
-// DeleteTelegramDealTopic removes one stale deal-topic association.
-func (dealTopicStore *GORMDealTopicStore) DeleteTelegramDealTopic(applicationContext context.Context, dealID string) error {
-	databaseConnection := dealTopicStore.currentDatabaseConnection()
-	if databaseConnection == nil {
-		return ErrDealTopicServiceUnavailable
-	}
-	return database.DeleteTelegramDealTopic(applicationContext, databaseConnection, dealID)
-}
-
-// currentDatabaseConnection safely snapshots the current connection.
-func (dealTopicStore *GORMDealTopicStore) currentDatabaseConnection() *gorm.DB {
-	dealTopicStore.databaseConnectionMutex.RLock()
-	defer dealTopicStore.databaseConnectionMutex.RUnlock()
-	return dealTopicStore.databaseConnection
 }
 
 // DealTopicService resolves existing associations and creates missing Telegram
@@ -343,7 +289,7 @@ func RegisterDealTopicRoutes(echoServer *echo.Echo, dealTopicService *DealTopicS
 			return echoContext.String(http.StatusBadRequest, "invalid deal ID\n")
 		}
 		topicURL, err := dealTopicService.ResolveTopicURL(echoContext.Request().Context(), dealID)
-		if errors.Is(err, ErrDealTopicServiceUnavailable) {
+		if errors.Is(err, ErrDealTopicServiceUnavailable) || errors.Is(err, database.ErrConnectionUnavailable) {
 			return echoContext.String(http.StatusServiceUnavailable, "deal topic service unavailable\n")
 		}
 		if err != nil {

@@ -57,6 +57,7 @@ methods:
   - database.FindTelegramDealTopicByMessageThreadID: Resolves an incoming Telegram topic back to its Bigin deal.
   - database.CreateTelegramDealTopic: Stores a Bigin deal-to-Telegram topic association.
   - database.DeleteTelegramDealTopic: Removes a mapping after Telegram confirms that its topic was deleted.
+  - database.NewTelegramDealTopicStore: Provides late-bound PostgreSQL access while startup health endpoints remain available.
   - bigin.Client.GetDealName: Retrieves the current deal name from Bigin.
   - webapp.DealTopicService.ResolveTopicURL: Resolves or creates a deal topic and returns its private Telegram URL.
   - webapp.LLMDealTopicIntroductionGenerator.GenerateIntroduction: Creates the first topic message from current Bigin data.

@@ -70,7 +70,7 @@ func run() error {
 	databaseReadiness := database.NewReadiness()
 	allowedUserAuthorizer := webapp.NewGORMAllowedUserAuthorizer()
 	draftReader := webapp.NewGORMDraftReader()
-	dealTopicStore := webapp.NewGORMDealTopicStore()
+	dealTopicStore := database.NewTelegramDealTopicStore()
 	dealTopicService, err := webapp.NewDealTopicService(applicationConfig.TelegramGroupChatID, dealTopicStore)
 	if err != nil {
 		return fmt.Errorf("initialize deal topic service: %w", err)

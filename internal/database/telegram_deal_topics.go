@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"tourplannerbot/internal/models"
 
@@ -14,6 +15,60 @@ import (
 // ErrTelegramDealTopicNotFound indicates that no Telegram topic has been
 // associated with the requested Bigin deal yet.
 var ErrTelegramDealTopicNotFound = errors.New("Telegram deal topic not found")
+
+// TelegramDealTopicStore exposes deal-topic persistence while allowing the
+// application startup loop to provide PostgreSQL after the HTTP server starts.
+type TelegramDealTopicStore struct {
+	databaseConnectionMutex sync.RWMutex
+	databaseConnection      *gorm.DB
+}
+
+// NewTelegramDealTopicStore creates a store whose connection can be supplied
+// when PostgreSQL becomes available.
+func NewTelegramDealTopicStore() *TelegramDealTopicStore {
+	return &TelegramDealTopicStore{}
+}
+
+// SetDatabaseConnection makes a GORM connection available to the store.
+func (dealTopicStore *TelegramDealTopicStore) SetDatabaseConnection(databaseConnection *gorm.DB) {
+	dealTopicStore.databaseConnectionMutex.Lock()
+	defer dealTopicStore.databaseConnectionMutex.Unlock()
+	dealTopicStore.databaseConnection = databaseConnection
+}
+
+// FindTelegramDealTopic retrieves one association through the current connection.
+func (dealTopicStore *TelegramDealTopicStore) FindTelegramDealTopic(applicationContext context.Context, dealID string) (*models.TelegramDealTopic, error) {
+	databaseConnection := dealTopicStore.currentDatabaseConnection()
+	if databaseConnection == nil {
+		return nil, ErrConnectionUnavailable
+	}
+	return FindTelegramDealTopic(applicationContext, databaseConnection, dealID)
+}
+
+// CreateTelegramDealTopic persists one association through the current connection.
+func (dealTopicStore *TelegramDealTopicStore) CreateTelegramDealTopic(applicationContext context.Context, dealID string, messageThreadID int64) (*models.TelegramDealTopic, error) {
+	databaseConnection := dealTopicStore.currentDatabaseConnection()
+	if databaseConnection == nil {
+		return nil, ErrConnectionUnavailable
+	}
+	return CreateTelegramDealTopic(applicationContext, databaseConnection, dealID, messageThreadID)
+}
+
+// DeleteTelegramDealTopic removes one association through the current connection.
+func (dealTopicStore *TelegramDealTopicStore) DeleteTelegramDealTopic(applicationContext context.Context, dealID string) error {
+	databaseConnection := dealTopicStore.currentDatabaseConnection()
+	if databaseConnection == nil {
+		return ErrConnectionUnavailable
+	}
+	return DeleteTelegramDealTopic(applicationContext, databaseConnection, dealID)
+}
+
+// currentDatabaseConnection safely snapshots the current GORM connection.
+func (dealTopicStore *TelegramDealTopicStore) currentDatabaseConnection() *gorm.DB {
+	dealTopicStore.databaseConnectionMutex.RLock()
+	defer dealTopicStore.databaseConnectionMutex.RUnlock()
+	return dealTopicStore.databaseConnection
+}
 
 // FindTelegramDealTopic retrieves the Telegram topic association for a Bigin deal.
 func FindTelegramDealTopic(applicationContext context.Context, databaseConnection *gorm.DB, dealID string) (*models.TelegramDealTopic, error) {

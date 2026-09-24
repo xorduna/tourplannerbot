@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+// TestTelegramDealTopicStoreReportsUnavailableBeforeConnection verifies the
+// HTTP startup path receives the shared database availability error.
+func TestTelegramDealTopicStoreReportsUnavailableBeforeConnection(t *testing.T) {
+	dealTopicStore := NewTelegramDealTopicStore()
+	if _, err := dealTopicStore.FindTelegramDealTopic(context.Background(), "2034020000000489080"); !errors.Is(err, ErrConnectionUnavailable) {
+		t.Errorf("FindTelegramDealTopic error = %v, want ErrConnectionUnavailable", err)
+	}
+}
+
 // TestTelegramDealTopicRepositoryStoresOnlyAssociation exercises the mapping
 // repository against PostgreSQL without touching the migrated application table.
 func TestTelegramDealTopicRepositoryStoresOnlyAssociation(t *testing.T) {

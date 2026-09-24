@@ -12,6 +12,7 @@ methods:
   - database.FindTelegramDealTopicByMessageThreadID: Resolves an incoming Telegram topic back to its Bigin deal.
   - database.CreateTelegramDealTopic: Stores a Bigin deal-to-Telegram topic association.
   - database.DeleteTelegramDealTopic: Removes a mapping after Telegram confirms that its topic was deleted.
+  - database.NewTelegramDealTopicStore: Provides late-bound PostgreSQL access while startup health endpoints remain available.
   - bigin.Client.GetDealName: Retrieves the current deal name from Bigin.
   - webapp.DealTopicService.ResolveTopicURL: Resolves or creates a deal topic and returns its private Telegram URL.
   - webapp.LLMDealTopicIntroductionGenerator.GenerateIntroduction: Creates the first topic message from current Bigin data.
@@ -60,6 +61,10 @@ topic, the handler resolves the mapping by `message_thread_id`, retrieves the
 complete current record from Bigin, and adds it to model context without
 persisting the response. The configured private forum is trusted for bot use;
 PIN authentication remains active in private chats and other groups.
+
+The late-bound GORM connection used during startup belongs to the database
+package. The web endpoint depends only on the small `DealTopicStore` contract
+and contains no PostgreSQL initialization or connection management.
 
 The HTTP deal-topic endpoint verifies a stored topic with a lightweight
 Telegram action before redirecting. Only an explicit missing-topic response
