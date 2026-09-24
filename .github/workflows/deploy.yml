@@ -104,6 +104,9 @@ jobs:
       TOOLS_BIGIN_CLIENT_ID: ${{ vars.TOOLS_BIGIN_CLIENT_ID }}
       TOOLS_BIGIN_REFRESH_TOKEN: ${{ secrets.TOOLS_BIGIN_REFRESH_TOKEN }}
       TOOLS_BIGIN_CLIENT_SECRET: ${{ secrets.TOOLS_BIGIN_CLIENT_SECRET }}
+      TOOLS_GMAIL_CLIENT_ID: ${{ vars.TOOLS_GMAIL_CLIENT_ID }}
+      TOOLS_GMAIL_REFRESH_TOKEN: ${{ secrets.TOOLS_GMAIL_REFRESH_TOKEN }}
+      TOOLS_GMAIL_CLIENT_SECRET: ${{ secrets.TOOLS_GMAIL_CLIENT_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

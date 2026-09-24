@@ -82,8 +82,9 @@ These are separate workflow steps on the same runner, so the migration error and
 The build job creates an immutable `<branch>_<short-sha>` image tag, embeds that version and the UTC build time in the Go binary, and pushes both the immutable tag and `latest`. The deployment always references the immutable tag. The service exposes the embedded metadata as JSON from `/healthz`, while `/readyz` checks the database without causing a restart while it is temporarily unavailable.
 
 The `deploy` job injects the runtime secrets into the app-level environment,
-including `DATABASE_URL`, the Bigin refresh token, and the Bigin client secret.
-The non-secret Bigin client ID comes from a GitHub Actions repository variable.
+including `DATABASE_URL` and the Bigin and Gmail refresh tokens and client
+secrets. Their non-secret client IDs come from GitHub Actions repository
+variables.
 The job first verifies that the DigitalOcean token can read the configured app
 and uses `doctl apps propose` to validate the rendered spec as a non-mutating
 update. It then uses `doctl apps update --wait`, so the GitHub Actions job waits
@@ -93,5 +94,5 @@ trusted source before deployment.
 
 Before enabling this flow, configure these GitHub Actions values:
 
-- Repository variables: `DO_APP_ID` and `TOOLS_BIGIN_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
-- Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `ACCESS_PIN`, `TOOLS_BIGIN_REFRESH_TOKEN`, and `TOOLS_BIGIN_CLIENT_SECRET`.
+- Repository variables: `DO_APP_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
+- Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `ACCESS_PIN`, `TOOLS_BIGIN_REFRESH_TOKEN`, `TOOLS_BIGIN_CLIENT_SECRET`, `TOOLS_GMAIL_REFRESH_TOKEN`, and `TOOLS_GMAIL_CLIENT_SECRET`.
