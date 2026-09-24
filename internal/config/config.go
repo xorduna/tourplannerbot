@@ -113,7 +113,7 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.AutomaticEnv()
 
 	configuration.SetDefault("openai.model", "gpt-5.5")
-	configuration.SetDefault("env", "development")
+	configuration.SetDefault("env", "dev")
 	configuration.SetDefault("openai.transcription_model", "gpt-transcribe")
 	configuration.SetDefault("openai.base_url", "https://api.openai.com/v1")
 	configuration.SetDefault("llm.provider", "openai")
