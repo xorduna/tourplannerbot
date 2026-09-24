@@ -80,21 +80,38 @@ func NewClient(configuration Config) (*Client, error) {
 	}, nil
 }
 
-// get performs one authenticated GET request. An unauthorized response
-// invalidates the cached token and is retried once with a newly refreshed one.
+// get performs one authenticated GET request.
 func (client *Client) get(ctx context.Context, apiPath string) ([]byte, error) {
+	return client.do(ctx, http.MethodGet, apiPath, nil)
+}
+
+// postJSON performs one authenticated POST request with a JSON body.
+func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody any) ([]byte, error) {
+	encodedRequestBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("encode Bigin API request: %w", err)
+	}
+	return client.do(ctx, http.MethodPost, apiPath, encodedRequestBody)
+}
+
+// do performs an authenticated Bigin request. An unauthorized response
+// invalidates the cached token and is retried once with a newly refreshed one.
+func (client *Client) do(ctx context.Context, method string, apiPath string, requestBody []byte) ([]byte, error) {
 	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
 		accessToken, err := client.validAccessToken(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.apiURL+apiPath, nil)
+		request, err := http.NewRequestWithContext(ctx, method, client.apiURL+apiPath, bytes.NewReader(requestBody))
 		if err != nil {
 			return nil, fmt.Errorf("create Bigin request: %w", err)
 		}
 		request.Header.Set("Authorization", "Zoho-oauthtoken "+accessToken)
 		request.Header.Set("Accept", "application/json")
+		if requestBody != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
 
 		response, err := client.httpClient.Do(request)
 		if err != nil {
