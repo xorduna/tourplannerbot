@@ -18,6 +18,9 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Graceful shutdown on SIGTERM
 - Echo HTTP server with versioned liveness (`/healthz`) and PostgreSQL readiness (`/readyz`) checks
 - Authenticated Telegram Mini App handshake protected by signed, short-lived API sessions
+- Telegram voice-note and audio-file input with OpenAI transcription
+- Semantic audio normalization that applies spoken self-corrections before conversation persistence
+- Separate `M’has dit que…` acknowledgement and chatbot response messages
 
 The bot stores authorized user messages, generated replies, tool calls, and tool results, then sends the newest items from the same Telegram chat and topic to the LLM as context. A non-topic chat uses `message_thread_id = 0`.
 
@@ -30,6 +33,7 @@ internal/
   database/database.go        # GORM PostgreSQL connection
   webapp/                     # Echo server and embedded Mini App assets
   llm/client.go               # Official OpenAI Go SDK Responses API client
+  audioinput/                 # OpenAI transcription and canonical message normalization
   models/                      # GORM models for authorized users, messages, and drafts
   telegram/handler.go         # Message routing and persisted LLM/tool loop
   telegram/progress.go        # Typing and editable response progress
@@ -184,6 +188,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `APP_BASE_URL` | no | — | Public HTTPS URL, such as the final service domain or a temporary tunnel |
 | `TELEGRAM_WEBAPP_AUTH_MAX_AGE` | no | `5m` | Maximum accepted age for Telegram Mini App `initData` and the resulting API session |
 | `OPENAI_MODEL` | no | `gpt-5.5` | Model name |
+| `OPENAI_TRANSCRIPTION_MODEL` | no | `gpt-transcribe` | Model used for Telegram voice-note and audio-file transcription |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | OpenAI Responses API base URL |
 | `LLM_PROVIDER` | no | `openai` | Provider label written to LLM audit records |
 | `LLM_TARIFFS_DIR` | no | `tariffs` | Versioned CSV directory used to price the configured model |

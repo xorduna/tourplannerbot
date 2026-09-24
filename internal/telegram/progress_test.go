@@ -140,6 +140,34 @@ func TestTelegramResponseProgressLifecycle(t *testing.T) {
 	}
 }
 
+// TestTelegramResponseProgressSupportsListeningStatus verifies audio input can use the same editable progress lifecycle.
+func TestTelegramResponseProgressSupportsListeningStatus(t *testing.T) {
+	recordingHTTPClient := &recordingTelegramHTTPClient{}
+	telegramBot, telegramBotError := bot.New(
+		"test-token",
+		bot.WithSkipGetMe(),
+		bot.WithHTTPClient(time.Second, recordingHTTPClient),
+	)
+	if telegramBotError != nil {
+		t.Fatalf("create Telegram bot: %v", telegramBotError)
+	}
+	handler := &Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	progress := newTelegramResponseProgressWithInitialStatus(context.Background(), handler, telegramBot, 123, 0, "🎧 Escoltant l’àudio…")
+	progress.finish(context.Background(), "🎙️ M’has dit que vols anar a Tarragona.")
+
+	recordedRequests := recordingHTTPClient.recordedRequests()
+	if len(recordedRequests) != 3 {
+		t.Fatalf("recorded %d Telegram requests, want 3: %#v", len(recordedRequests), recordedRequests)
+	}
+	if recordedRequests[0].fields["text"] != "🎧 Escoltant l’àudio…" {
+		t.Errorf("initial audio status = %q", recordedRequests[0].fields["text"])
+	}
+	if recordedRequests[2].fields["text"] != "🎙️ M’has dit que vols anar a Tarragona." {
+		t.Errorf("audio confirmation = %q", recordedRequests[2].fields["text"])
+	}
+}
+
 func TestTelegramResponseProgressEditsFinalTableAsRichMessage(t *testing.T) {
 	recordingHTTPClient := &recordingTelegramHTTPClient{}
 	telegramBot, telegramBotError := bot.New(

@@ -23,6 +23,24 @@ used_by:
   - README.md
 ```
 
+## audio-input.md
+
+```yaml
+title: Telegram Audio Input
+description: Voice-note download, OpenAI transcription, semantic normalization, persistence, and Telegram acknowledgement flow.
+methods:
+  - audioinput.Processor.Process: Transcribes and normalizes one bounded recording.
+  - telegram.Handler.downloadTelegramAudio: Downloads authorized Telegram audio with a size limit.
+  - telegram.audioConfirmationText: Formats the first permanent acknowledgement message.
+depends_on:
+  - internal/audioinput/processor.go
+  - internal/telegram/audio.go
+  - internal/telegram/handler.go
+  - internal/telegram/progress.go
+used_by:
+  - cmd/bot/main.go
+```
+
 ## database.md
 
 ```yaml

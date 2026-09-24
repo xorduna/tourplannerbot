@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"tourplannerbot/internal/audioinput"
 	"tourplannerbot/internal/buildinfo"
 	"tourplannerbot/internal/config"
 	"tourplannerbot/internal/database"
@@ -140,6 +141,12 @@ func run() error {
 		applicationConfig.LLMMaxTokens,
 		applicationConfig.LLMPricing,
 	)
+	voiceInputProcessor := audioinput.NewProcessor(
+		applicationConfig.OpenAIAPIKey,
+		applicationConfig.OpenAIBaseURL,
+		applicationConfig.OpenAITranscriptionModel,
+		applicationConfig.OpenAIModel,
+	)
 	systemInstructions, err := prompt.Load("prompts/system_query.md")
 	if err != nil {
 		logger.Error("failed to load query system prompt", "error", err)
@@ -155,6 +162,7 @@ func run() error {
 		applicationConfig.ToolCallMaxIterations,
 		toolRegistry,
 		llmClient,
+		voiceInputProcessor,
 	)
 
 	telegramBot, err := bot.New(applicationConfig.TelegramBotToken,
