@@ -270,6 +270,9 @@ DigitalOcean App Platform. The app is created manually in the DO console:
   - `ACCESS_PIN`
   - `OPENAI_MODEL`
   - `LOG_LEVEL`
+  - `TOOLS_BIGIN_CLIENT_ID` (GitHub Actions repository variable)
+  - `TOOLS_BIGIN_REFRESH_TOKEN` (GitHub Actions secret)
+  - `TOOLS_BIGIN_CLIENT_SECRET` (GitHub Actions secret)
 
 ---
 

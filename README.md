@@ -8,6 +8,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Conversation history isolated by Telegram chat and topic
 - Config loaded from environment variables through Viper
 - Native tool registry and bounded LLM tool-calling loop
+- Detailed startup logs for configured, disabled, discovered, and successfully registered tools
 - Dynamic MCP tool discovery over Streamable HTTP
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
@@ -220,7 +221,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID` and `DO_APP_ID` as GitHub Actions variables, and set `ACCESS_PIN` as a GitHub Actions secret.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, and `TOOLS_BIGIN_CLIENT_ID` as GitHub Actions variables. Store `TOOLS_BIGIN_REFRESH_TOKEN` and `TOOLS_BIGIN_CLIENT_SECRET` as GitHub Actions secrets alongside the other runtime credentials.
 
 For example, the liveness response has this shape:
 
