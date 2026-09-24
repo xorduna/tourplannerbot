@@ -13,6 +13,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
 - Bigin deal lookup and contact search by ID, name, email, or phone, with automatic Zoho OAuth token refresh
+- Gmail draft creation and full-message updates with automatic Google OAuth token refresh
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
 - Live Telegram typing and an editable thinking/tool-use progress message
 - Native Telegram Rich Message tables with a readable list fallback
@@ -44,6 +45,7 @@ internal/
     types.go                  # Provider-independent tool contract
     currenttime/              # Native current_time tool
     bigin/                    # Native Zoho Bigin tools and OAuth client
+    gmail/                    # Native Gmail tools and OAuth client
     mcpclient/                # Streamable HTTP MCP adapter
 migrations/                   # Goose SQL migrations
 prompts/
@@ -206,6 +208,12 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_BIGIN_ACCOUNTS_URL` | no | `https://accounts.zoho.eu` | Zoho Accounts base URL for OAuth refreshes |
 | `TOOLS_BIGIN_API_URL` | no | `https://www.zohoapis.eu` | EU Zoho API base URL used for Bigin records |
 | `TOOLS_BIGIN_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Bigin API calls |
+| `TOOLS_GMAIL_REFRESH_TOKEN` | together | — | Google OAuth refresh token with the `gmail.compose` scope; all three Gmail credentials enable the native Gmail draft tools |
+| `TOOLS_GMAIL_CLIENT_ID` | together | — | Google OAuth client ID |
+| `TOOLS_GMAIL_CLIENT_SECRET` | together | — | Google OAuth client secret; never logged |
+| `TOOLS_GMAIL_OAUTH_URL` | no | `https://oauth2.googleapis.com/token` | Google OAuth token endpoint |
+| `TOOLS_GMAIL_API_URL` | no | `https://gmail.googleapis.com` | Gmail REST API base URL |
+| `TOOLS_GMAIL_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Gmail API calls |
 | `TOOLS_MCPS` | no | empty | Comma-separated MCP server names; list membership enables a server by default |
 | `TOOLS_<NAME>_ENABLED` | no | list membership | Explicit per-server override; `true` may enable an unlisted known server and `false` disables a listed one |
 | `TOOLS_<NAME>_URL` | when enabled | — | Absolute Streamable HTTP MCP endpoint |
@@ -221,7 +229,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, and `TOOLS_BIGIN_CLIENT_ID` as GitHub Actions variables. Store `TOOLS_BIGIN_REFRESH_TOKEN` and `TOOLS_BIGIN_CLIENT_SECRET` as GitHub Actions secrets alongside the other runtime credentials.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, and OAuth client IDs as GitHub Actions variables. Store refresh tokens and client secrets as GitHub Actions secrets alongside the other runtime credentials.
 
 For example, the liveness response has this shape:
 

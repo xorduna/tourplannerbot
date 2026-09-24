@@ -167,6 +167,8 @@ methods:
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
+  - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
+  - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
   - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
   - mcpclient.Connect: Connects to one Streamable HTTP MCP server and discovers all advertised tools.
@@ -179,6 +181,9 @@ depends_on:
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
+  - internal/tools/gmail/client.go
+  - internal/tools/gmail/create_draft.go
+  - internal/tools/gmail/update_draft.go
   - internal/tools/draft/create_draft.go
   - internal/tools/draft/update_draft.go
   - internal/tools/mcpclient/client.go

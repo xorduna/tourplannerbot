@@ -20,6 +20,9 @@ const (
 	defaultBiginAccountsURL    = "https://accounts.zoho.eu"
 	defaultBiginAPIURL         = "https://www.zohoapis.eu"
 	defaultBiginTimeout        = 30 * time.Second
+	defaultGmailOAuthURL       = "https://oauth2.googleapis.com/token"
+	defaultGmailAPIURL         = "https://gmail.googleapis.com"
+	defaultGmailTimeout        = 30 * time.Second
 )
 
 var (
@@ -46,6 +49,18 @@ type BiginToolConfig struct {
 	CallTimeout  time.Duration
 }
 
+// GmailToolConfig contains the credentials and endpoints shared by native
+// Gmail tools. The integration is enabled only for a complete credential set.
+type GmailToolConfig struct {
+	Enabled      bool
+	RefreshToken string
+	ClientID     string
+	ClientSecret string
+	OAuthURL     string
+	APIURL       string
+	CallTimeout  time.Duration
+}
+
 // MCPServerConfig contains the connection and authentication settings for one
 // Streamable HTTP MCP server.
 type MCPServerConfig struct {
@@ -61,6 +76,7 @@ type MCPServerConfig struct {
 type ToolsConfig struct {
 	CurrentTime CurrentTimeToolConfig
 	Bigin       BiginToolConfig
+	Gmail       GmailToolConfig
 	MCPServers  []MCPServerConfig
 }
 
@@ -107,6 +123,9 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.bigin.accounts_url", defaultBiginAccountsURL)
 	configuration.SetDefault("tools.bigin.api_url", defaultBiginAPIURL)
 	configuration.SetDefault("tools.bigin.timeout", defaultBiginTimeout.String())
+	configuration.SetDefault("tools.gmail.oauth_url", defaultGmailOAuthURL)
+	configuration.SetDefault("tools.gmail.api_url", defaultGmailAPIURL)
+	configuration.SetDefault("tools.gmail.timeout", defaultGmailTimeout.String())
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
@@ -164,6 +183,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	gmailConfiguration, err := loadGmailToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	mcpServers, err := loadMCPServerConfigurations(configuration)
 	if err != nil {
 		return nil, err
@@ -196,6 +219,7 @@ func LoadFromEnvironment() (*Config, error) {
 				DefaultTimezone: currentTimeDefaultTimezone,
 			},
 			Bigin:      biginConfiguration,
+			Gmail:      gmailConfiguration,
 			MCPServers: mcpServers,
 		},
 		AccessPIN:                accessPIN,
@@ -204,6 +228,47 @@ func LoadFromEnvironment() (*Config, error) {
 		AppBaseURL:               appBaseURL,
 		TelegramWebAppAuthMaxAge: telegramWebAppAuthMaxAge,
 	}, nil
+}
+
+// loadGmailToolConfiguration enables Gmail only for a complete credential set
+// and validates optional OAuth, API, and timeout overrides.
+func loadGmailToolConfiguration(configuration *viper.Viper) (GmailToolConfig, error) {
+	gmailConfiguration := GmailToolConfig{
+		RefreshToken: strings.TrimSpace(configuration.GetString("tools.gmail.refresh_token")),
+		ClientID:     strings.TrimSpace(configuration.GetString("tools.gmail.client_id")),
+		ClientSecret: strings.TrimSpace(configuration.GetString("tools.gmail.client_secret")),
+		OAuthURL:     strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.gmail.oauth_url")), "/"),
+		APIURL:       strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.gmail.api_url")), "/"),
+	}
+
+	configuredCredentialCount := 0
+	for _, credential := range []string{gmailConfiguration.RefreshToken, gmailConfiguration.ClientID, gmailConfiguration.ClientSecret} {
+		if credential != "" {
+			configuredCredentialCount++
+		}
+	}
+	if configuredCredentialCount == 0 {
+		return gmailConfiguration, nil
+	}
+	if configuredCredentialCount != 3 {
+		return GmailToolConfig{}, fmt.Errorf("TOOLS_GMAIL_REFRESH_TOKEN, TOOLS_GMAIL_CLIENT_ID, and TOOLS_GMAIL_CLIENT_SECRET must either all be configured or all be empty")
+	}
+
+	var err error
+	gmailConfiguration.OAuthURL, err = optionalHTTPURL(gmailConfiguration.OAuthURL, "TOOLS_GMAIL_OAUTH_URL")
+	if err != nil {
+		return GmailToolConfig{}, err
+	}
+	gmailConfiguration.APIURL, err = optionalHTTPURL(gmailConfiguration.APIURL, "TOOLS_GMAIL_API_URL")
+	if err != nil {
+		return GmailToolConfig{}, err
+	}
+	gmailConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.gmail.timeout"), "TOOLS_GMAIL_TIMEOUT")
+	if err != nil {
+		return GmailToolConfig{}, err
+	}
+	gmailConfiguration.Enabled = true
+	return gmailConfiguration, nil
 }
 
 // loadBiginToolConfiguration enables Bigin only for a complete credential set
