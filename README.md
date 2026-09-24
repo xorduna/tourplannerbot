@@ -13,6 +13,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
 - Bigin deal lookup and contact search by ID, name, email, or phone, with automatic Zoho OAuth token refresh
+- On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
 - Gmail draft creation and full-message updates with automatic Google OAuth token refresh
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
 - Live Telegram typing and an editable thinking/tool-use progress message
@@ -34,6 +35,7 @@ cmd/bot/main.go               # Entrypoint
 internal/
   config/config.go            # Env var loading
   database/database.go        # GORM PostgreSQL connection
+  database/telegram_deal_topics.go # Bigin deal-to-Telegram topic mappings
   webapp/                     # Echo server and embedded Mini App assets
   llm/client.go               # Official OpenAI Go SDK Responses API client
   audioinput/                 # OpenAI transcription and canonical message normalization
@@ -144,6 +146,30 @@ bot itself runs inside Docker Desktop, use `host.docker.internal` instead of
 `127.0.0.1`, or attach all services to one Compose network and use their service
 names.
 
+### Bigin deal topics
+
+`GET /deals/{deal_id}/topic` redirects to the deal's topic in the private
+Telegram forum configured by `TELEGRAM_GROUP_CHAT_ID`. On the first request it
+loads the current deal name from Bigin, creates the forum topic, stores only the
+returned `message_thread_id`, and redirects. Later requests use the stored
+association and verify the topic with Telegram before redirecting. If Telegram
+reports that the topic was deleted, the stale mapping is removed and a new
+topic is created from the current Bigin name. Temporary Telegram errors leave
+the mapping untouched to avoid duplicate topics. Every `ENV` deployment has
+its own database, so the mapping has no environment column.
+
+Immediately after creating or recreating a topic, the configured LLM writes a
+short Catalan introduction from the same current Bigin response and the bot
+sends it as the first topic message. The introduction is not stored locally.
+If generation fails, the bot sends a deterministic welcome message; if only
+delivery fails, the valid mapping and redirect are preserved.
+
+The configured private forum is treated as trusted: members can use the bot
+there without entering the PIN, while private chats and other groups keep the
+normal PIN flow. Topic messages are resolved back to their `deal_id`; before
+each model response the bot fetches the complete current deal from Bigin and
+adds it as ephemeral context. That Bigin response is never persisted locally.
+
 ## Mini App Frontend
 
 The production Mini App is compiled from `web/` and embedded in the Go binary;
@@ -186,6 +212,8 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `TELEGRAM_BOT_TOKEN` | yes | — | Bot token from @BotFather |
+| `TELEGRAM_GROUP_CHAT_ID` | yes | — | Private supergroup/forum ID, including its `-100` prefix, where deal topics are created |
+| `ENV` | no | `development` | Current runtime environment; each environment uses its own database |
 | `DATABASE_URL` | yes | — | PostgreSQL connection URL |
 | `OPENAI_API_KEY` | yes | — | OpenAI (or compatible) API key |
 | `ACCESS_PIN` | yes | — | PIN users must enter to unlock the bot |
@@ -229,7 +257,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets as GitHub Actions secrets alongside the other runtime credentials.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets as GitHub Actions secrets alongside the other runtime credentials.
 
 For example, the liveness response has this shape:
 

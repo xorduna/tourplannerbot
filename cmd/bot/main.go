@@ -57,6 +57,7 @@ func run() error {
 
 	buildInformation := buildinfo.Current()
 	logger.Info("starting tourplannerbot",
+		"environment", applicationConfig.Environment,
 		"log_level", applicationConfig.LogLevel,
 		"version", buildInformation.Version,
 		"build_time", buildInformation.BuildTime,
@@ -69,6 +70,12 @@ func run() error {
 	databaseReadiness := database.NewReadiness()
 	allowedUserAuthorizer := webapp.NewGORMAllowedUserAuthorizer()
 	draftReader := webapp.NewGORMDraftReader()
+	dealTopicStore := webapp.NewGORMDealTopicStore()
+	dealTopicService, err := webapp.NewDealTopicService(applicationConfig.TelegramGroupChatID, dealTopicStore)
+	if err != nil {
+		return fmt.Errorf("initialize deal topic service: %w", err)
+	}
+	dealTopicService.SetLogger(logger)
 	sessionAuthenticator, err := webapp.NewSessionAuthenticator(webapp.SessionConfig{
 		TelegramBotToken:     applicationConfig.TelegramBotToken,
 		AuthenticationMaxAge: applicationConfig.TelegramWebAppAuthMaxAge,
@@ -77,6 +84,7 @@ func run() error {
 		return fmt.Errorf("initialize Mini App authentication: %w", err)
 	}
 	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation, sessionAuthenticator, draftReader)
+	webapp.RegisterDealTopicRoutes(echoServer, dealTopicService)
 	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()
@@ -101,6 +109,7 @@ func run() error {
 			"reason", "disabled by configuration",
 		)
 	}
+	var biginClient *bigin.Client
 	if applicationConfig.Tools.Bigin.Enabled {
 		biginClientInitializationStartedAt := time.Now()
 		logger.Info("initializing Bigin tool client",
@@ -111,7 +120,7 @@ func run() error {
 			"timeout", applicationConfig.Tools.Bigin.CallTimeout.String(),
 			"status", "initializing",
 		)
-		biginClient, err := bigin.NewClient(bigin.Config{
+		biginClient, err = bigin.NewClient(bigin.Config{
 			RefreshToken: applicationConfig.Tools.Bigin.RefreshToken,
 			ClientID:     applicationConfig.Tools.Bigin.ClientID,
 			ClientSecret: applicationConfig.Tools.Bigin.ClientSecret,
@@ -133,6 +142,7 @@ func run() error {
 			"duration_ms", time.Since(biginClientInitializationStartedAt).Milliseconds(),
 			"status", "ready",
 		)
+		dealTopicService.SetBiginDealReader(biginClient)
 		if err := initializeAndRegisterTool(logger, toolRegistry, "get_bigin_deal", "bigin", func() (applicationTools.Tool, error) {
 			return bigin.NewGetDeal(biginClient)
 		}); err != nil {
@@ -217,6 +227,7 @@ func run() error {
 	databaseReadiness.SetConnection(sqlDatabaseConnection)
 	allowedUserAuthorizer.SetDatabaseConnection(databaseConnection)
 	draftReader.SetDatabaseConnection(databaseConnection)
+	dealTopicStore.SetDatabaseConnection(databaseConnection)
 	defer sqlDatabaseConnection.Close()
 	if err := initializeAndRegisterTool(logger, toolRegistry, "create_draft", "native", func() (applicationTools.Tool, error) {
 		return draft.New(databaseConnection)
@@ -252,6 +263,11 @@ func run() error {
 		applicationConfig.LLMMaxTokens,
 		applicationConfig.LLMPricing,
 	)
+	dealTopicIntroductionGenerator, err := webapp.NewLLMDealTopicIntroductionGenerator(llmClient)
+	if err != nil {
+		return fmt.Errorf("initialize deal topic introduction generator: %w", err)
+	}
+	dealTopicService.SetIntroductionGenerator(dealTopicIntroductionGenerator)
 	voiceInputProcessor := audioinput.NewProcessor(
 		applicationConfig.OpenAIAPIKey,
 		applicationConfig.OpenAIBaseURL,
@@ -275,6 +291,10 @@ func run() error {
 		llmClient,
 		voiceInputProcessor,
 	)
+	messageHandler.SetTrustedTelegramGroupChatID(applicationConfig.TelegramGroupChatID)
+	if biginClient != nil {
+		messageHandler.SetBiginDealReader(biginClient)
+	}
 
 	telegramBot, err := bot.New(applicationConfig.TelegramBotToken,
 		bot.WithDefaultHandler(messageHandler.HandleMessage),
@@ -283,6 +303,7 @@ func run() error {
 		logger.Error("failed to create telegram bot", "error", err)
 		return fmt.Errorf("create Telegram bot: %w", err)
 	}
+	dealTopicService.SetTelegramForumTopicCreator(telegramBot)
 
 	botInfo, err := telegramBot.GetMe(applicationContext)
 	if err != nil {

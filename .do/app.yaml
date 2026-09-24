@@ -2,10 +2,16 @@ name: tourplannerbot
 region: lon  # change to your preferred region (nyc, sfo, fra, sgp, etc.)
 
 envs:
+  - key: ENV
+    scope: RUN_TIME
+    value: production
   - key: TELEGRAM_BOT_TOKEN
     scope: RUN_TIME
     type: SECRET
     value: "${TELEGRAM_BOT_TOKEN}"
+  - key: TELEGRAM_GROUP_CHAT_ID
+    scope: RUN_TIME
+    value: "${TELEGRAM_GROUP_CHAT_ID}"
   - key: DATABASE_URL
     scope: RUN_TIME
     type: SECRET

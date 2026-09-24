@@ -53,6 +53,13 @@ methods:
   - database.FindDraftByID: Retrieves a persistent draft by its public UUID.
   - database.FindActiveDraft: Retrieves the authorized owner's active conversation draft.
   - database.UpdateDraft: Atomically saves a validated draft at its expected revision.
+  - database.FindTelegramDealTopic: Finds the Telegram topic associated with a Bigin deal.
+  - database.FindTelegramDealTopicByMessageThreadID: Resolves an incoming Telegram topic back to its Bigin deal.
+  - database.CreateTelegramDealTopic: Stores a Bigin deal-to-Telegram topic association.
+  - database.DeleteTelegramDealTopic: Removes a mapping after Telegram confirms that its topic was deleted.
+  - bigin.Client.GetDealName: Retrieves the current deal name from Bigin.
+  - webapp.DealTopicService.ResolveTopicURL: Resolves or creates a deal topic and returns its private Telegram URL.
+  - webapp.LLMDealTopicIntroductionGenerator.GenerateIntroduction: Creates the first topic message from current Bigin data.
   - telegram.Handler.authorizeUser: Queries and creates authorized users through GORM.
   - telegram.Handler.loadConversationMessages: Retrieves recent history for one chat and topic.
 depends_on:
@@ -61,8 +68,14 @@ depends_on:
   - migrations/00002_create_messages.sql
   - migrations/00004_add_tool_messages.sql
   - migrations/00005_create_drafts.sql
+  - migrations/00006_create_telegram_deal_topics.sql
   - internal/database/database.go
   - internal/database/drafts.go
+  - internal/database/telegram_deal_topics.go
+  - internal/models/telegram_deal_topic.go
+  - internal/tools/bigin/get_deal.go
+  - internal/webapp/deal_topics.go
+  - internal/webapp/deal_topic_introduction.go
   - internal/webapp/drafts.go
   - internal/database/readiness.go
   - internal/models/allowed_user.go

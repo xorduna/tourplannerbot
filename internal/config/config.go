@@ -82,7 +82,9 @@ type ToolsConfig struct {
 
 // Config holds all application configuration values.
 type Config struct {
+	Environment              string
 	TelegramBotToken         string
+	TelegramGroupChatID      int64
 	DatabaseURL              string
 	OpenAIAPIKey             string
 	OpenAIModel              string
@@ -111,6 +113,7 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.AutomaticEnv()
 
 	configuration.SetDefault("openai.model", "gpt-5.5")
+	configuration.SetDefault("env", "development")
 	configuration.SetDefault("openai.transcription_model", "gpt-transcribe")
 	configuration.SetDefault("openai.base_url", "https://api.openai.com/v1")
 	configuration.SetDefault("llm.provider", "openai")
@@ -131,6 +134,10 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
 
 	telegramBotToken, err := requiredString(configuration, "telegram_bot_token")
+	if err != nil {
+		return nil, err
+	}
+	telegramGroupChatID, err := privateTelegramGroupChatID(configuration.GetString("telegram_group_chat_id"))
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +208,9 @@ func LoadFromEnvironment() (*Config, error) {
 	}
 
 	return &Config{
+		Environment:              strings.TrimSpace(configuration.GetString("env")),
 		TelegramBotToken:         telegramBotToken,
+		TelegramGroupChatID:      telegramGroupChatID,
 		DatabaseURL:              databaseURL,
 		OpenAIAPIKey:             openAIAPIKey,
 		OpenAIModel:              openAIModel,
@@ -228,6 +237,23 @@ func LoadFromEnvironment() (*Config, error) {
 		AppBaseURL:               appBaseURL,
 		TelegramWebAppAuthMaxAge: telegramWebAppAuthMaxAge,
 	}, nil
+}
+
+// privateTelegramGroupChatID validates and parses the numeric identifier of a
+// private Telegram supergroup or forum.
+func privateTelegramGroupChatID(rawChatID string) (int64, error) {
+	chatIDText := strings.TrimSpace(rawChatID)
+	if !strings.HasPrefix(chatIDText, "-100") || len(chatIDText) == len("-100") {
+		return 0, fmt.Errorf("TELEGRAM_GROUP_CHAT_ID must start with -100")
+	}
+	if _, err := strconv.ParseUint(strings.TrimPrefix(chatIDText, "-100"), 10, 63); err != nil {
+		return 0, fmt.Errorf("TELEGRAM_GROUP_CHAT_ID must contain only digits after -100, got: %s", rawChatID)
+	}
+	chatID, err := strconv.ParseInt(chatIDText, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("TELEGRAM_GROUP_CHAT_ID is outside the supported range: %s", rawChatID)
+	}
+	return chatID, nil
 }
 
 // loadGmailToolConfiguration enables Gmail only for a complete credential set

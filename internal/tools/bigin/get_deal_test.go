@@ -168,3 +168,33 @@ func TestGetDealDefinitionIsStrict(t *testing.T) {
 		t.Errorf("definition = %#v", definition)
 	}
 }
+
+// TestGetDealNameReturnsCurrentBiginName verifies HTTP consumers can reuse the
+// Bigin client without persisting the rest of the deal record.
+func TestGetDealNameReturnsCurrentBiginName(t *testing.T) {
+	biginClient, err := NewClient(Config{
+		RefreshToken: "refresh-token",
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		AccountsURL:  "https://accounts.example.com",
+		APIURL:       "https://api.example.com",
+		CallTimeout:  time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewClient returned an error: %v", err)
+	}
+	biginClient.httpClient.Transport = roundTripFunction(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Path == "/oauth/v2/token" {
+			return jsonHTTPResponse(http.StatusOK, `{"access_token":"access-token","expires_in":3600}`), nil
+		}
+		return jsonHTTPResponse(http.StatusOK, `{"data":[{"id":"123","Deal_Name":"  Barcelona visit  ","Stage":"Qualification"}]}`), nil
+	})
+
+	dealName, err := biginClient.GetDealName(context.Background(), "123")
+	if err != nil {
+		t.Fatalf("GetDealName returned an error: %v", err)
+	}
+	if dealName != "Barcelona visit" {
+		t.Errorf("GetDealName = %q, want Barcelona visit", dealName)
+	}
+}
