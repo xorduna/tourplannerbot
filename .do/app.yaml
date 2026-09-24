@@ -18,6 +18,17 @@ envs:
     scope: RUN_TIME
     type: SECRET
     value: "${ACCESS_PIN}"
+  - key: TOOLS_BIGIN_CLIENT_ID
+    scope: RUN_TIME
+    value: "${TOOLS_BIGIN_CLIENT_ID}"
+  - key: TOOLS_BIGIN_CLIENT_SECRET
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_BIGIN_CLIENT_SECRET}"
+  - key: TOOLS_BIGIN_REFRESH_TOKEN
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_BIGIN_REFRESH_TOKEN}"
   - key: OPENAI_MODEL
     scope: RUN_TIME
     value: gpt-5.6-luna
