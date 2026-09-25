@@ -23,6 +23,10 @@ const (
 	defaultGmailOAuthURL       = "https://oauth2.googleapis.com/token"
 	defaultGmailAPIURL         = "https://gmail.googleapis.com"
 	defaultGmailTimeout        = 30 * time.Second
+	defaultBraveAPIURL         = "https://api.search.brave.com"
+	defaultBraveTimeout        = 30 * time.Second
+	defaultBraveResultCount    = 5
+	maximumBraveResultCount    = 20
 )
 
 var (
@@ -61,6 +65,17 @@ type GmailToolConfig struct {
 	CallTimeout  time.Duration
 }
 
+// BraveToolConfig contains the subscription token and endpoint configuration
+// used by the native Brave web search tool. The integration is enabled as soon
+// as a subscription token is configured.
+type BraveToolConfig struct {
+	Enabled            bool
+	SubscriptionToken  string
+	APIURL             string
+	CallTimeout        time.Duration
+	DefaultResultCount int
+}
+
 // MCPServerConfig contains the connection and authentication settings for one
 // Streamable HTTP MCP server.
 type MCPServerConfig struct {
@@ -77,6 +92,7 @@ type ToolsConfig struct {
 	CurrentTime CurrentTimeToolConfig
 	Bigin       BiginToolConfig
 	Gmail       GmailToolConfig
+	Brave       BraveToolConfig
 	MCPServers  []MCPServerConfig
 }
 
@@ -129,6 +145,9 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.gmail.oauth_url", defaultGmailOAuthURL)
 	configuration.SetDefault("tools.gmail.api_url", defaultGmailAPIURL)
 	configuration.SetDefault("tools.gmail.timeout", defaultGmailTimeout.String())
+	configuration.SetDefault("tools.brave.api_url", defaultBraveAPIURL)
+	configuration.SetDefault("tools.brave.timeout", defaultBraveTimeout.String())
+	configuration.SetDefault("tools.brave.count", defaultBraveResultCount)
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
@@ -194,6 +213,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	braveConfiguration, err := loadBraveToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	mcpServers, err := loadMCPServerConfigurations(configuration)
 	if err != nil {
 		return nil, err
@@ -229,6 +252,7 @@ func LoadFromEnvironment() (*Config, error) {
 			},
 			Bigin:      biginConfiguration,
 			Gmail:      gmailConfiguration,
+			Brave:      braveConfiguration,
 			MCPServers: mcpServers,
 		},
 		AccessPIN:                accessPIN,
@@ -254,6 +278,35 @@ func privateTelegramGroupChatID(rawChatID string) (int64, error) {
 		return 0, fmt.Errorf("TELEGRAM_GROUP_CHAT_ID is outside the supported range: %s", rawChatID)
 	}
 	return chatID, nil
+}
+
+// loadBraveToolConfiguration enables the Brave web search tool when a
+// subscription token is configured and validates its optional endpoint,
+// timeout, and default result count overrides.
+func loadBraveToolConfiguration(configuration *viper.Viper) (BraveToolConfig, error) {
+	braveConfiguration := BraveToolConfig{
+		SubscriptionToken: strings.TrimSpace(configuration.GetString("tools.brave.token")),
+		APIURL:            strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.brave.api_url")), "/"),
+	}
+	if braveConfiguration.SubscriptionToken == "" {
+		return braveConfiguration, nil
+	}
+
+	var err error
+	braveConfiguration.APIURL, err = optionalHTTPURL(braveConfiguration.APIURL, "TOOLS_BRAVE_API_URL")
+	if err != nil {
+		return BraveToolConfig{}, err
+	}
+	braveConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.brave.timeout"), "TOOLS_BRAVE_TIMEOUT")
+	if err != nil {
+		return BraveToolConfig{}, err
+	}
+	braveConfiguration.DefaultResultCount = configuration.GetInt("tools.brave.count")
+	if braveConfiguration.DefaultResultCount < 1 || braveConfiguration.DefaultResultCount > maximumBraveResultCount {
+		return BraveToolConfig{}, fmt.Errorf("TOOLS_BRAVE_COUNT must be between 1 and %d, got %d", maximumBraveResultCount, braveConfiguration.DefaultResultCount)
+	}
+	braveConfiguration.Enabled = true
+	return braveConfiguration, nil
 }
 
 // loadGmailToolConfiguration enables Gmail only for a complete credential set

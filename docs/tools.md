@@ -12,6 +12,7 @@ methods:
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
+  - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -27,6 +28,8 @@ depends_on:
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
+  - internal/tools/brave/client.go
+  - internal/tools/brave/web_search.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
   - internal/tools/gmail/update_draft.go
@@ -114,6 +117,34 @@ The default endpoints are `https://accounts.zoho.eu` and
 `https://www.zohoapis.eu`; they can be overridden with
 `TOOLS_BIGIN_ACCOUNTS_URL` and `TOOLS_BIGIN_API_URL`. `TOOLS_BIGIN_TIMEOUT`
 defaults to `30s`.
+
+## Native Brave web search tool
+
+`web_search(query, count, freshness)` searches the public web through the Brave
+Search API endpoint `GET /res/v1/web/search`. It is intended for information
+that changes over time, such as opening hours, prices, ticket availability,
+events, transport, or news, where answering from model memory is unreliable.
+
+`query` is required and is validated locally against the documented Brave
+limits of 400 characters and 50 words. `count` is optional, defaults to
+`TOOLS_BRAVE_COUNT`, and must be between 1 and 20. `freshness` is optional and
+accepts only `pd`, `pw`, `pm`, or `py` for the last day, week, month, or year.
+
+The tool deliberately does **not** forward Brave's complete response envelope.
+It returns `{"query", "count", "results"}` where each result contains only the
+title, URL, description, and, when available, the age of the page. Highlight
+markup and HTML entities are removed, whitespace is collapsed, and descriptions
+longer than 600 bytes are truncated on a UTF-8 boundary. This keeps a single
+search from consuming an unreasonable part of the context window.
+
+The tool is enabled as soon as `TOOLS_BRAVE_TOKEN` is configured; an absent
+token leaves it disabled without failing startup. The token is sent in the
+`X-Subscription-Token` header, is never written to logs, and is excluded from
+the error messages returned to the model. Brave errors keep their code and
+detail so the model can distinguish a rate limit from a bad request.
+
+`TOOLS_BRAVE_API_URL` defaults to `https://api.search.brave.com` and exists for
+tests and compatible gateways. `TOOLS_BRAVE_TIMEOUT` defaults to `30s`.
 
 ## Native Gmail tools
 

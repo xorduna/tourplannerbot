@@ -20,6 +20,7 @@ import (
 	"tourplannerbot/internal/telegram"
 	applicationTools "tourplannerbot/internal/tools"
 	"tourplannerbot/internal/tools/bigin"
+	"tourplannerbot/internal/tools/brave"
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/draft"
 	"tourplannerbot/internal/tools/gmail"
@@ -92,6 +93,7 @@ func run() error {
 		"current_time_enabled", applicationConfig.Tools.CurrentTime.Enabled,
 		"bigin_enabled", applicationConfig.Tools.Bigin.Enabled,
 		"gmail_enabled", applicationConfig.Tools.Gmail.Enabled,
+		"brave_enabled", applicationConfig.Tools.Brave.Enabled,
 		"mcp_server_configuration_count", len(applicationConfig.Tools.MCPServers),
 		"status", "initializing",
 	)
@@ -213,6 +215,47 @@ func run() error {
 			"planned_tools", []string{"create_gmail_draft", "update_gmail_draft"},
 			"status", "disabled",
 			"reason", "OAuth credentials are not configured",
+		)
+	}
+	if applicationConfig.Tools.Brave.Enabled {
+		braveClientInitializationStartedAt := time.Now()
+		logger.Info("initializing Brave tool client",
+			"tool_source", "brave",
+			"planned_tools", []string{"web_search"},
+			"api_url", applicationConfig.Tools.Brave.APIURL,
+			"timeout", applicationConfig.Tools.Brave.CallTimeout.String(),
+			"status", "initializing",
+		)
+		braveClient, err := brave.NewClient(brave.Config{
+			SubscriptionToken: applicationConfig.Tools.Brave.SubscriptionToken,
+			APIURL:            applicationConfig.Tools.Brave.APIURL,
+			CallTimeout:       applicationConfig.Tools.Brave.CallTimeout,
+		})
+		if err != nil {
+			logger.Error("failed to initialize Brave tool client",
+				"tool_source", "brave",
+				"duration_ms", time.Since(braveClientInitializationStartedAt).Milliseconds(),
+				"status", "failed",
+				"error", err,
+			)
+			return fmt.Errorf("initialize Brave client: %w", err)
+		}
+		logger.Info("Brave tool client initialized",
+			"tool_source", "brave",
+			"duration_ms", time.Since(braveClientInitializationStartedAt).Milliseconds(),
+			"status", "ready",
+		)
+		if err := initializeAndRegisterTool(logger, toolRegistry, "web_search", "brave", func() (applicationTools.Tool, error) {
+			return brave.NewWebSearch(braveClient, applicationConfig.Tools.Brave.DefaultResultCount)
+		}); err != nil {
+			return fmt.Errorf("initialize or register web_search tool: %w", err)
+		}
+	} else {
+		logger.Info("Brave tools are disabled",
+			"tool_source", "brave",
+			"planned_tools", []string{"web_search"},
+			"status", "disabled",
+			"reason", "subscription token is not configured",
 		)
 	}
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)

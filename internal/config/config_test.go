@@ -283,6 +283,56 @@ func TestLoadFromEnvironmentRejectsPartialGmailCredentials(t *testing.T) {
 	}
 }
 
+// TestLoadFromEnvironmentEnablesBraveForConfiguredToken verifies the
+// subscription token alone enables web search with its documented defaults.
+func TestLoadFromEnvironmentEnablesBraveForConfiguredToken(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_BRAVE_TOKEN", "subscription-token")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.Brave.Enabled {
+		t.Fatal("Tools.Brave.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.Brave.APIURL != "https://api.search.brave.com" {
+		t.Errorf("Tools.Brave.APIURL = %q", applicationConfig.Tools.Brave.APIURL)
+	}
+	if applicationConfig.Tools.Brave.CallTimeout != 30*time.Second {
+		t.Errorf("Tools.Brave.CallTimeout = %s, want 30s", applicationConfig.Tools.Brave.CallTimeout)
+	}
+	if applicationConfig.Tools.Brave.DefaultResultCount != 5 {
+		t.Errorf("Tools.Brave.DefaultResultCount = %d, want 5", applicationConfig.Tools.Brave.DefaultResultCount)
+	}
+}
+
+// TestLoadFromEnvironmentDisablesBraveWithoutToken verifies an absent token
+// leaves web search disabled instead of failing startup.
+func TestLoadFromEnvironmentDisablesBraveWithoutToken(t *testing.T) {
+	setRequiredEnvironment(t)
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Tools.Brave.Enabled {
+		t.Error("Tools.Brave.Enabled = true, want false")
+	}
+}
+
+// TestLoadFromEnvironmentRejectsInvalidBraveResultCount verifies the default
+// result count stays inside the range accepted by the Brave API.
+func TestLoadFromEnvironmentRejectsInvalidBraveResultCount(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_BRAVE_TOKEN", "subscription-token")
+	t.Setenv("TOOLS_BRAVE_COUNT", "40")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment accepted TOOLS_BRAVE_COUNT above the Brave maximum")
+	}
+}
+
 // TestLoadFromEnvironmentLoadsMCPServers verifies list membership enables MCP
 // servers and their connection settings are parsed dynamically.
 func TestLoadFromEnvironmentLoadsMCPServers(t *testing.T) {

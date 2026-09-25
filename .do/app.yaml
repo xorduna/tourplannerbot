@@ -46,6 +46,10 @@ envs:
     scope: RUN_TIME
     type: SECRET
     value: "${TOOLS_GMAIL_REFRESH_TOKEN}"
+  - key: TOOLS_BRAVE_TOKEN
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_BRAVE_TOKEN}"
   - key: OPENAI_MODEL
     scope: RUN_TIME
     value: gpt-5.6-luna
