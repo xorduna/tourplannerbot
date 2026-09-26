@@ -13,6 +13,7 @@ methods:
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
+  - jina.ReadURLTool.Execute: Reads one web page through Jina Reader and returns its Markdown content.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -30,6 +31,8 @@ depends_on:
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/brave/client.go
   - internal/tools/brave/web_search.go
+  - internal/tools/jina/client.go
+  - internal/tools/jina/read_url.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
   - internal/tools/gmail/update_draft.go
@@ -146,6 +149,46 @@ detail so the model can distinguish a rate limit from a bad request.
 `TOOLS_BRAVE_API_URL` defaults to `https://api.search.brave.com` and exists for
 tests and compatible gateways. `TOOLS_BRAVE_TIMEOUT` defaults to `30s`.
 
+## Native Jina page reader tool
+
+`read_url(url, with_links)` retrieves one web page through the Jina AI Reader
+API and returns it as Markdown. It complements `web_search`: the search tool
+finds candidate pages, and this tool reads the chosen one. Jina renders
+JavaScript before extracting text, so it also reads pages a plain HTTP fetch
+returns empty.
+
+The target address travels in a JSON body sent to `POST https://r.jina.ai/`
+rather than appended to the Reader path. This keeps query strings and fragments
+intact without a second layer of URL escaping. `url` is validated locally and
+must be an absolute `http` or `https` address, so the tool cannot be steered
+into another URL scheme.
+
+`with_links` is optional. When true, the request sets `X-With-Links-Summary`
+and the result carries the page's outgoing links so the model can navigate
+further, for example from a venue's home page to its opening hours. The list is
+sorted deterministically and capped at 50 entries so a link-heavy page cannot
+dominate the result.
+
+The tool returns `{"url", "title", "description", "published_time",
+"http_status", "content", "truncated", "links", "warning"}`. Page Markdown
+longer than `TOOLS_JINA_MAX_CONTENT_SIZE` is cut on a UTF-8 boundary and
+reported through `truncated` rather than silently shortened. A reachable page
+with no readable text returns empty content plus an explicit warning, so the
+model can tell it apart from a failed read.
+
+Two upstream behaviours are deliberately surfaced rather than hidden. Jina
+answers HTTP 200 even when the requested page was itself an error page, so the
+page's own `http_status` is forwarded for the model to judge. Fetch failures
+such as an unresolvable domain or a navigation timeout arrive as HTTP 422 with
+a `readableMessage`; the tool keeps that reason, discards the multi-line
+navigation call log appended to timeouts, and never includes the API token.
+
+The tool is enabled as soon as `TOOLS_JINA_TOKEN` is configured; an absent
+token leaves it disabled without failing startup. `TOOLS_JINA_READER_URL`
+defaults to `https://r.jina.ai` and exists for tests and compatible gateways.
+`TOOLS_JINA_TIMEOUT` defaults to `60s` because rendering JavaScript is
+noticeably slower than a plain fetch.
+
 ## Native Gmail tools
 
 `create_gmail_draft(to, cc, bcc, subject, body)` creates an unsent plain-text
@@ -194,6 +237,15 @@ the count, a source-to-tools mapping, and the number of live MCP connections.
 Credentials are never included in these entries.
 
 Every execution emits human-readable log messages such as `using tool current_time` and `tool current_time use completed in 1.2ms`. The same entries contain structured conversation identifiers, loop iteration, tool name, provider call ID, outcome, and duration in milliseconds. Successful calls also record the result length. Arguments and complete results are deliberately excluded from logs to avoid leaking sensitive data.
+
+Telegram link previews are disabled on every message that can carry model text:
+the final response, the fallback send path, both draft previews, and the
+generated topic introduction. Answers cite the page each web fact came from, so
+one message commonly holds several links and Telegram would otherwise expand
+the first one into a large card that buries the answer. The option is a
+`*bool`, so `disabledLinkPreview` is covered by a test asserting it serializes
+as `{"is_disabled":true}`; a nil pointer would be omitted from the request and
+previews would silently return.
 
 The user sees the same lifecycle through one editable Telegram status message. It starts as `💭 Pensant…`, changes to a human description of the active tool, and then to `✍️ Preparant la resposta…` before the next model call. These descriptions identify Wikipedia, OpenStreetMap, or the native time tool and the general operation, but deliberately omit raw tool arguments.
 

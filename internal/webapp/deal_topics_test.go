@@ -56,6 +56,7 @@ type telegramForumTopicCreatorStub struct {
 	introductionCallCount int
 	introductionThreadID  int
 	introductionText      string
+	introductionPreview   *telegramModels.LinkPreviewOptions
 	introductionError     error
 }
 
@@ -131,6 +132,7 @@ func (topicCreator *telegramForumTopicCreatorStub) SendMessage(_ context.Context
 	topicCreator.introductionCallCount++
 	topicCreator.introductionThreadID = parameters.MessageThreadID
 	topicCreator.introductionText = parameters.Text
+	topicCreator.introductionPreview = parameters.LinkPreviewOptions
 	if topicCreator.introductionError != nil {
 		return nil, topicCreator.introductionError
 	}
@@ -192,6 +194,9 @@ func TestDealTopicEndpointCreatesAndPersistsMissingAssociation(t *testing.T) {
 	}
 	if dealTopicStore.createCallCount != 1 || dealTopicStore.createdDealID != "2034020000000489080" || dealTopicStore.createdThreadID != 789 {
 		t.Errorf("stored association = count %d, deal %q, thread %d", dealTopicStore.createCallCount, dealTopicStore.createdDealID, dealTopicStore.createdThreadID)
+	}
+	if telegramTopicCreator.introductionPreview == nil || telegramTopicCreator.introductionPreview.IsDisabled == nil || !*telegramTopicCreator.introductionPreview.IsDisabled {
+		t.Errorf("topic introduction must disable the Telegram link preview, got %#v", telegramTopicCreator.introductionPreview)
 	}
 	if introductionGenerator.callCount != 1 || telegramTopicCreator.introductionCallCount != 1 || telegramTopicCreator.introductionThreadID != 789 || telegramTopicCreator.introductionText != "👋 Resum inicial del tour" {
 		t.Errorf("introduction = generator calls %d, sends %d, thread %d, text %q", introductionGenerator.callCount, telegramTopicCreator.introductionCallCount, telegramTopicCreator.introductionThreadID, telegramTopicCreator.introductionText)

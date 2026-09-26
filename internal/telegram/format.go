@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/go-telegram/bot/models"
 )
 
 var orderedListItemPattern = regexp.MustCompile(`^(\d+)[.)]\s+(.+)$`)
@@ -324,4 +326,13 @@ func telegramURL(rawURL string) (string, bool) {
 		return "", false
 	}
 	return rawURL, true
+}
+
+// disabledLinkPreview suppresses Telegram's link preview card. Answers cite the
+// page every web fact came from, so a message commonly carries several links
+// and Telegram would otherwise expand the first one into a large card that
+// buries the answer itself.
+func disabledLinkPreview() *models.LinkPreviewOptions {
+	linkPreviewDisabled := true
+	return &models.LinkPreviewOptions{IsDisabled: &linkPreviewDisabled}
 }

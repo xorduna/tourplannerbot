@@ -24,6 +24,7 @@ import (
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/draft"
 	"tourplannerbot/internal/tools/gmail"
+	"tourplannerbot/internal/tools/jina"
 	"tourplannerbot/internal/tools/mcpclient"
 	"tourplannerbot/internal/webapp"
 
@@ -94,6 +95,7 @@ func run() error {
 		"bigin_enabled", applicationConfig.Tools.Bigin.Enabled,
 		"gmail_enabled", applicationConfig.Tools.Gmail.Enabled,
 		"brave_enabled", applicationConfig.Tools.Brave.Enabled,
+		"jina_enabled", applicationConfig.Tools.Jina.Enabled,
 		"mcp_server_configuration_count", len(applicationConfig.Tools.MCPServers),
 		"status", "initializing",
 	)
@@ -256,6 +258,47 @@ func run() error {
 			"planned_tools", []string{"web_search"},
 			"status", "disabled",
 			"reason", "subscription token is not configured",
+		)
+	}
+	if applicationConfig.Tools.Jina.Enabled {
+		jinaClientInitializationStartedAt := time.Now()
+		logger.Info("initializing Jina tool client",
+			"tool_source", "jina",
+			"planned_tools", []string{"read_url"},
+			"reader_url", applicationConfig.Tools.Jina.ReaderURL,
+			"timeout", applicationConfig.Tools.Jina.CallTimeout.String(),
+			"status", "initializing",
+		)
+		jinaClient, err := jina.NewClient(jina.Config{
+			APIToken:    applicationConfig.Tools.Jina.APIToken,
+			ReaderURL:   applicationConfig.Tools.Jina.ReaderURL,
+			CallTimeout: applicationConfig.Tools.Jina.CallTimeout,
+		})
+		if err != nil {
+			logger.Error("failed to initialize Jina tool client",
+				"tool_source", "jina",
+				"duration_ms", time.Since(jinaClientInitializationStartedAt).Milliseconds(),
+				"status", "failed",
+				"error", err,
+			)
+			return fmt.Errorf("initialize Jina client: %w", err)
+		}
+		logger.Info("Jina tool client initialized",
+			"tool_source", "jina",
+			"duration_ms", time.Since(jinaClientInitializationStartedAt).Milliseconds(),
+			"status", "ready",
+		)
+		if err := initializeAndRegisterTool(logger, toolRegistry, "read_url", "jina", func() (applicationTools.Tool, error) {
+			return jina.NewReadURL(jinaClient, applicationConfig.Tools.Jina.MaximumContentSize)
+		}); err != nil {
+			return fmt.Errorf("initialize or register read_url tool: %w", err)
+		}
+	} else {
+		logger.Info("Jina tools are disabled",
+			"tool_source", "jina",
+			"planned_tools", []string{"read_url"},
+			"status", "disabled",
+			"reason", "API token is not configured",
 		)
 	}
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)

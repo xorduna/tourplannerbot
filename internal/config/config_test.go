@@ -333,6 +333,56 @@ func TestLoadFromEnvironmentRejectsInvalidBraveResultCount(t *testing.T) {
 	}
 }
 
+// TestLoadFromEnvironmentEnablesJinaForConfiguredToken verifies the API token
+// alone enables the page reader with its documented defaults.
+func TestLoadFromEnvironmentEnablesJinaForConfiguredToken(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_JINA_TOKEN", "api-token")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.Jina.Enabled {
+		t.Fatal("Tools.Jina.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.Jina.ReaderURL != "https://r.jina.ai" {
+		t.Errorf("Tools.Jina.ReaderURL = %q", applicationConfig.Tools.Jina.ReaderURL)
+	}
+	if applicationConfig.Tools.Jina.CallTimeout != 60*time.Second {
+		t.Errorf("Tools.Jina.CallTimeout = %s, want 60s", applicationConfig.Tools.Jina.CallTimeout)
+	}
+	if applicationConfig.Tools.Jina.MaximumContentSize != 12000 {
+		t.Errorf("Tools.Jina.MaximumContentSize = %d, want 12000", applicationConfig.Tools.Jina.MaximumContentSize)
+	}
+}
+
+// TestLoadFromEnvironmentDisablesJinaWithoutToken verifies an absent token
+// leaves the page reader disabled instead of failing startup.
+func TestLoadFromEnvironmentDisablesJinaWithoutToken(t *testing.T) {
+	setRequiredEnvironment(t)
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if applicationConfig.Tools.Jina.Enabled {
+		t.Error("Tools.Jina.Enabled = true, want false")
+	}
+}
+
+// TestLoadFromEnvironmentRejectsInvalidJinaContentSize verifies the content
+// limit stays inside the supported range.
+func TestLoadFromEnvironmentRejectsInvalidJinaContentSize(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_JINA_TOKEN", "api-token")
+	t.Setenv("TOOLS_JINA_MAX_CONTENT_SIZE", "10")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment accepted TOOLS_JINA_MAX_CONTENT_SIZE below the supported minimum")
+	}
+}
+
 // TestLoadFromEnvironmentLoadsMCPServers verifies list membership enables MCP
 // servers and their connection settings are parsed dynamically.
 func TestLoadFromEnvironmentLoadsMCPServers(t *testing.T) {

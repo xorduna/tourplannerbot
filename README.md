@@ -16,6 +16,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
 - Gmail draft creation and full-message updates with automatic Google OAuth token refresh
 - `web_search` tool backed by the Brave Search API for current, real-world information
+- `read_url` tool backed by the Jina AI Reader API for reading a full page, including JavaScript-rendered sites
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
 - Live Telegram typing and an editable thinking/tool-use progress message
 - Native Telegram Rich Message tables with a readable list fallback
@@ -50,6 +51,7 @@ internal/
     bigin/                    # Native Zoho Bigin tools and OAuth client
     brave/                    # Native Brave web search tool and API client
     gmail/                    # Native Gmail tools and OAuth client
+    jina/                     # Native Jina page reader tool and API client
     mcpclient/                # Streamable HTTP MCP adapter
 migrations/                   # Goose SQL migrations
 prompts/
@@ -248,6 +250,10 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_BRAVE_API_URL` | no | `https://api.search.brave.com` | Brave Search API base URL |
 | `TOOLS_BRAVE_TIMEOUT` | no | `30s` | Positive Go duration applied to each Brave Search call |
 | `TOOLS_BRAVE_COUNT` | no | `5` | Default number of results returned when the model does not request one; must be 1–20 |
+| `TOOLS_JINA_TOKEN` | no | — | Jina AI API token; its presence alone enables the native `read_url` tool |
+| `TOOLS_JINA_READER_URL` | no | `https://r.jina.ai` | Jina Reader API base URL |
+| `TOOLS_JINA_TIMEOUT` | no | `60s` | Positive Go duration applied to each page read; Jina renders JavaScript, so reads are slower than a plain fetch |
+| `TOOLS_JINA_MAX_CONTENT_SIZE` | no | `12000` | Maximum bytes of page Markdown returned to the model; must be 500–200000 |
 | `TOOLS_MCPS` | no | empty | Comma-separated MCP server names; list membership enables a server by default |
 | `TOOLS_<NAME>_ENABLED` | no | list membership | Explicit per-server override; `true` may enable an unlisted known server and `false` disables a listed one |
 | `TOOLS_<NAME>_URL` | when enabled | — | Absolute Streamable HTTP MCP endpoint |
@@ -263,7 +269,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, plus `TOOLS_BRAVE_TOKEN`, as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, plus `TOOLS_BRAVE_TOKEN` and `TOOLS_JINA_TOKEN`, as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
 
 For example, the liveness response has this shape:
 

@@ -218,10 +218,12 @@ func (dealTopicService *DealTopicService) sendTopicIntroduction(applicationConte
 			introductionText = generatedIntroduction
 		}
 	}
+	linkPreviewDisabled := true
 	if _, err := telegramForumTopicCreator.SendMessage(applicationContext, &telegramBot.SendMessageParams{
-		ChatID:          dealTopicService.telegramGroupChatID,
-		MessageThreadID: int(messageThreadID),
-		Text:            introductionText,
+		ChatID:             dealTopicService.telegramGroupChatID,
+		MessageThreadID:    int(messageThreadID),
+		Text:               introductionText,
+		LinkPreviewOptions: &telegramModels.LinkPreviewOptions{IsDisabled: &linkPreviewDisabled},
 	}); err != nil {
 		dealTopicService.logger.Warn("failed to send Telegram topic introduction", "deal_id", dealID, "message_thread_id", messageThreadID, "error", err)
 	}

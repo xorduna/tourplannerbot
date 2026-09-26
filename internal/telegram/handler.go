@@ -499,11 +499,12 @@ func (telegramHandler *Handler) draftPreviewReplyMarkup(chatType models.ChatType
 func (telegramHandler *Handler) sendDraftPreviewMessage(ctx context.Context, telegramBot *bot.Bot, chatID int64, messageThreadID int, chatType models.ChatType, draft *applicationModels.Draft, heading string) (*models.Message, error) {
 	replyMarkup := telegramHandler.draftPreviewReplyMarkup(chatType, draft.ID)
 	return telegramBot.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:          chatID,
-		MessageThreadID: messageThreadID,
-		Text:            formatTelegramHTML(draftPreviewText(heading, draft)),
-		ParseMode:       models.ParseModeHTML,
-		ReplyMarkup:     replyMarkup,
+		ChatID:             chatID,
+		MessageThreadID:    messageThreadID,
+		Text:               formatTelegramHTML(draftPreviewText(heading, draft)),
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: disabledLinkPreview(),
+		ReplyMarkup:        replyMarkup,
 	})
 }
 
@@ -963,10 +964,11 @@ func (telegramHandler *Handler) sendText(ctx context.Context, telegramBot *bot.B
 	}
 
 	_, err := telegramBot.SendMessage(ctx, &bot.SendMessageParams{
-		ChatID:          chatID,
-		MessageThreadID: messageThreadID,
-		Text:            formatTelegramHTML(text),
-		ParseMode:       models.ParseModeHTML,
+		ChatID:             chatID,
+		MessageThreadID:    messageThreadID,
+		Text:               formatTelegramHTML(text),
+		ParseMode:          models.ParseModeHTML,
+		LinkPreviewOptions: disabledLinkPreview(),
 	})
 	if err != nil {
 		telegramHandler.logger.Error("failed to send Telegram message",

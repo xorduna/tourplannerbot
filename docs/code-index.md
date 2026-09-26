@@ -183,6 +183,7 @@ methods:
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
+  - jina.ReadURLTool.Execute: Reads one web page through Jina Reader and returns its Markdown content.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -200,6 +201,8 @@ depends_on:
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/brave/client.go
   - internal/tools/brave/web_search.go
+  - internal/tools/jina/client.go
+  - internal/tools/jina/read_url.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
   - internal/tools/gmail/update_draft.go

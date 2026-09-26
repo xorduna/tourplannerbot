@@ -138,11 +138,12 @@ func (progress *telegramResponseProgress) finishDraftPreview(ctx context.Context
 
 	if progress.statusMessageID != 0 {
 		_, editError := progress.telegramBot.EditMessageText(ctx, &bot.EditMessageTextParams{
-			ChatID:      progress.chatID,
-			MessageID:   progress.statusMessageID,
-			Text:        formatTelegramHTML(draftPreviewText(heading, draft)),
-			ParseMode:   models.ParseModeHTML,
-			ReplyMarkup: progress.handler.draftPreviewReplyMarkup(chatType, draft.ID),
+			ChatID:             progress.chatID,
+			MessageID:          progress.statusMessageID,
+			Text:               formatTelegramHTML(draftPreviewText(heading, draft)),
+			ParseMode:          models.ParseModeHTML,
+			LinkPreviewOptions: disabledLinkPreview(),
+			ReplyMarkup:        progress.handler.draftPreviewReplyMarkup(chatType, draft.ID),
 		})
 		if editError == nil {
 			telegramMessageID := int64(progress.statusMessageID)
@@ -184,8 +185,9 @@ func (progress *telegramResponseProgress) finishDraftPreview(ctx context.Context
 func (progress *telegramResponseProgress) editFinalResponse(ctx context.Context, responseText string) error {
 	formattedRichHTML, hasTables := formatTelegramRichHTML(responseText)
 	editParameters := &bot.EditMessageTextParams{
-		ChatID:    progress.chatID,
-		MessageID: progress.statusMessageID,
+		ChatID:             progress.chatID,
+		MessageID:          progress.statusMessageID,
+		LinkPreviewOptions: disabledLinkPreview(),
 	}
 	if hasTables {
 		editParameters.RichMessage = &models.InputRichMessage{HTML: formattedRichHTML}
@@ -285,6 +287,8 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "👤 Buscant contactes a Bigin…"
 	case normalizedToolName == "web_search":
 		return "🌐 Cercant a Internet…"
+	case normalizedToolName == "read_url":
+		return "📄 Llegint la pàgina…"
 	case normalizedToolName == "create_gmail_draft":
 		return "✉️ Creant l’esborrany a Gmail…"
 	case normalizedToolName == "update_gmail_draft":

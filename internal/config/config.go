@@ -27,6 +27,11 @@ const (
 	defaultBraveTimeout        = 30 * time.Second
 	defaultBraveResultCount    = 5
 	maximumBraveResultCount    = 20
+	defaultJinaReaderURL       = "https://r.jina.ai"
+	defaultJinaTimeout         = 60 * time.Second
+	defaultJinaMaxContentSize  = 12000
+	minimumJinaMaxContentSize  = 500
+	maximumJinaMaxContentSize  = 200000
 )
 
 var (
@@ -76,6 +81,17 @@ type BraveToolConfig struct {
 	DefaultResultCount int
 }
 
+// JinaToolConfig contains the API token and endpoint configuration used by the
+// native Jina page reader tool. The integration is enabled as soon as an API
+// token is configured.
+type JinaToolConfig struct {
+	Enabled            bool
+	APIToken           string
+	ReaderURL          string
+	CallTimeout        time.Duration
+	MaximumContentSize int
+}
+
 // MCPServerConfig contains the connection and authentication settings for one
 // Streamable HTTP MCP server.
 type MCPServerConfig struct {
@@ -93,6 +109,7 @@ type ToolsConfig struct {
 	Bigin       BiginToolConfig
 	Gmail       GmailToolConfig
 	Brave       BraveToolConfig
+	Jina        JinaToolConfig
 	MCPServers  []MCPServerConfig
 }
 
@@ -148,6 +165,9 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.brave.api_url", defaultBraveAPIURL)
 	configuration.SetDefault("tools.brave.timeout", defaultBraveTimeout.String())
 	configuration.SetDefault("tools.brave.count", defaultBraveResultCount)
+	configuration.SetDefault("tools.jina.reader_url", defaultJinaReaderURL)
+	configuration.SetDefault("tools.jina.timeout", defaultJinaTimeout.String())
+	configuration.SetDefault("tools.jina.max_content_size", defaultJinaMaxContentSize)
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
@@ -217,6 +237,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	jinaConfiguration, err := loadJinaToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	mcpServers, err := loadMCPServerConfigurations(configuration)
 	if err != nil {
 		return nil, err
@@ -253,6 +277,7 @@ func LoadFromEnvironment() (*Config, error) {
 			Bigin:      biginConfiguration,
 			Gmail:      gmailConfiguration,
 			Brave:      braveConfiguration,
+			Jina:       jinaConfiguration,
 			MCPServers: mcpServers,
 		},
 		AccessPIN:                accessPIN,
@@ -278,6 +303,35 @@ func privateTelegramGroupChatID(rawChatID string) (int64, error) {
 		return 0, fmt.Errorf("TELEGRAM_GROUP_CHAT_ID is outside the supported range: %s", rawChatID)
 	}
 	return chatID, nil
+}
+
+// loadJinaToolConfiguration enables the Jina page reader tool when an API token
+// is configured and validates its optional endpoint, timeout, and content size
+// overrides.
+func loadJinaToolConfiguration(configuration *viper.Viper) (JinaToolConfig, error) {
+	jinaConfiguration := JinaToolConfig{
+		APIToken:  strings.TrimSpace(configuration.GetString("tools.jina.token")),
+		ReaderURL: strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.jina.reader_url")), "/"),
+	}
+	if jinaConfiguration.APIToken == "" {
+		return jinaConfiguration, nil
+	}
+
+	var err error
+	jinaConfiguration.ReaderURL, err = optionalHTTPURL(jinaConfiguration.ReaderURL, "TOOLS_JINA_READER_URL")
+	if err != nil {
+		return JinaToolConfig{}, err
+	}
+	jinaConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.jina.timeout"), "TOOLS_JINA_TIMEOUT")
+	if err != nil {
+		return JinaToolConfig{}, err
+	}
+	jinaConfiguration.MaximumContentSize = configuration.GetInt("tools.jina.max_content_size")
+	if jinaConfiguration.MaximumContentSize < minimumJinaMaxContentSize || jinaConfiguration.MaximumContentSize > maximumJinaMaxContentSize {
+		return JinaToolConfig{}, fmt.Errorf("TOOLS_JINA_MAX_CONTENT_SIZE must be between %d and %d, got %d", minimumJinaMaxContentSize, maximumJinaMaxContentSize, jinaConfiguration.MaximumContentSize)
+	}
+	jinaConfiguration.Enabled = true
+	return jinaConfiguration, nil
 }
 
 // loadBraveToolConfiguration enables the Brave web search tool when a

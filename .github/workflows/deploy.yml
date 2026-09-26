@@ -109,6 +109,7 @@ jobs:
       TOOLS_GMAIL_REFRESH_TOKEN: ${{ secrets.TOOLS_GMAIL_REFRESH_TOKEN }}
       TOOLS_GMAIL_CLIENT_SECRET: ${{ secrets.TOOLS_GMAIL_CLIENT_SECRET }}
       TOOLS_BRAVE_TOKEN: ${{ secrets.TOOLS_BRAVE_TOKEN }}
+      TOOLS_JINA_TOKEN: ${{ secrets.TOOLS_JINA_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -278,6 +278,7 @@ DigitalOcean App Platform. The app is created manually in the DO console:
   - `TOOLS_GMAIL_REFRESH_TOKEN` (GitHub Actions secret)
   - `TOOLS_GMAIL_CLIENT_SECRET` (GitHub Actions secret)
   - `TOOLS_BRAVE_TOKEN` (GitHub Actions secret)
+  - `TOOLS_JINA_TOKEN` (GitHub Actions secret)
 
 ---
 
