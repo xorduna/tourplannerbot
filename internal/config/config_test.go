@@ -45,6 +45,14 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("TOOLS_OPENSTREETMAP_AUTH_TYPE", "")
 	t.Setenv("TOOLS_OPENSTREETMAP_TOKEN", "")
 	t.Setenv("TOOLS_OPENSTREETMAP_TIMEOUT", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_ENDPOINT", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_ACCESS_KEY", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_SECRET_KEY", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_BUCKET_NAME", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_REGION", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_PREFIX", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL", "")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_TIMEOUT", "")
 
 	tariffsDirectory := t.TempDir()
 	t.Setenv("LLM_TARIFFS_DIR", tariffsDirectory)
@@ -206,6 +214,45 @@ func TestLoadFromEnvironmentLoadsCurrentTimeOverrides(t *testing.T) {
 	}
 	if applicationConfig.Tools.CurrentTime.DefaultTimezone != "America/New_York" {
 		t.Errorf("Tools.CurrentTime.DefaultTimezone = %q", applicationConfig.Tools.CurrentTime.DefaultTimezone)
+	}
+}
+
+// TestLoadFromEnvironmentEnablesKnowledgeBaseForCompleteSettings verifies the
+// S3-compatible tools receive their safe defaults and configurable refresh TTL.
+func TestLoadFromEnvironmentEnablesKnowledgeBaseForCompleteSettings(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_KNOWLEDGEBASE_ENDPOINT", "https://lon1.digitaloceanspaces.com")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_ACCESS_KEY", "access-key")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_SECRET_KEY", "secret-key")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_BUCKET_NAME", "dianabcntours-kb")
+	t.Setenv("TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL", "7m")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.KnowledgeBase.Enabled {
+		t.Fatal("Tools.KnowledgeBase.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.KnowledgeBase.Prefix != "web/content" {
+		t.Errorf("Tools.KnowledgeBase.Prefix = %q, want web/content", applicationConfig.Tools.KnowledgeBase.Prefix)
+	}
+	if applicationConfig.Tools.KnowledgeBase.Region != "lon1" {
+		t.Errorf("Tools.KnowledgeBase.Region = %q, want lon1", applicationConfig.Tools.KnowledgeBase.Region)
+	}
+	if applicationConfig.Tools.KnowledgeBase.RefreshInterval != 7*time.Minute {
+		t.Errorf("Tools.KnowledgeBase.RefreshInterval = %s, want 7m", applicationConfig.Tools.KnowledgeBase.RefreshInterval)
+	}
+}
+
+// TestLoadFromEnvironmentRejectsPartialKnowledgeBaseSettings prevents a
+// startup that silently has only a fraction of the required S3 credentials.
+func TestLoadFromEnvironmentRejectsPartialKnowledgeBaseSettings(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_KNOWLEDGEBASE_ENDPOINT", "https://lon1.digitaloceanspaces.com")
+
+	if _, err := LoadFromEnvironment(); err == nil {
+		t.Fatal("LoadFromEnvironment returned nil error for partial knowledge-base settings")
 	}
 }
 

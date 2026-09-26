@@ -54,6 +54,23 @@ envs:
     scope: RUN_TIME
     type: SECRET
     value: "${TOOLS_JINA_TOKEN}"
+  - key: TOOLS_KNOWLEDGEBASE_ENDPOINT
+    scope: RUN_TIME
+    value: "${TOOLS_KNOWLEDGEBASE_ENDPOINT}"
+  - key: TOOLS_KNOWLEDGEBASE_ACCESS_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_KNOWLEDGEBASE_ACCESS_KEY}"
+  - key: TOOLS_KNOWLEDGEBASE_SECRET_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_KNOWLEDGEBASE_SECRET_KEY}"
+  - key: TOOLS_KNOWLEDGEBASE_BUCKET_NAME
+    scope: RUN_TIME
+    value: "${TOOLS_KNOWLEDGEBASE_BUCKET_NAME}"
+  - key: TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL
+    scope: RUN_TIME
+    value: 5m
   - key: OPENAI_MODEL
     scope: RUN_TIME
     value: gpt-5.6-luna

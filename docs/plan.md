@@ -279,6 +279,8 @@ DigitalOcean App Platform. The app is created manually in the DO console:
   - `TOOLS_GMAIL_CLIENT_SECRET` (GitHub Actions secret)
   - `TOOLS_BRAVE_TOKEN` (GitHub Actions secret)
   - `TOOLS_JINA_TOKEN` (GitHub Actions secret)
+  - `TOOLS_KNOWLEDGEBASE_ENDPOINT` and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` (GitHub Actions variables)
+  - `TOOLS_KNOWLEDGEBASE_ACCESS_KEY` and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` (GitHub Actions secrets)
 
 ---
 
@@ -347,7 +349,14 @@ Each one is a single task for Claude Code / Copilot.
 - Register discovered Wikipedia and OpenStreetMap tools without renaming them
 - **Completed**: Both local containers are discovered through the official Go MCP SDK, registered atomically, and exposed to the existing persisted tool loop.
 
-### Slice 9+ — More Tools (one per slice)
+### Slice 9 — Diana Barcelona knowledge base ✅ Complete
+- Read Hugo Markdown from the private S3-compatible DigitalOcean Spaces bucket.
+- Keep a fixed tool surface: list pages, list tours, read one page, and read one tour with its price estimate.
+- Refresh the inventory and tour frontmatter every configurable `TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL` (default `5m`) without embeddings or RAG.
+- Calculate tour totals as the fixed group `price` plus `people × price_per_person`, when present, for 1–9 people.
+- **Completed**: The model can retrieve authoritative own-tour, FAQ, and terms content and gets a canonical URL and deterministic price estimate from the source Markdown.
+
+### Slice 10+ — More Tools (one per slice)
 - Each tool is independent: implement handler, register, done
 - Candidates: `find_restaurants`, `get_weather`, `check_availability`
 - Connect to real APIs as needed (separate Python scraper service, Google Places, etc.)

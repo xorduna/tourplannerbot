@@ -75,6 +75,7 @@ func TestToolProgressText(t *testing.T) {
 		expectedText string
 	}{
 		{name: "current time", toolName: "current_time", toolSource: "native", expectedText: "🕐 Consultant l’hora…"},
+		{name: "knowledge base", toolName: "get_knowledge_base_tour", toolSource: "knowledge_base", expectedText: "📚 Consultant la knowledge base…"},
 		{name: "create draft", toolName: "create_draft", toolSource: "native", expectedText: "📝 Preparant la proposta…"},
 		{name: "update draft", toolName: "update_draft", toolSource: "native", expectedText: "📝 Actualitzant la proposta…"},
 		{name: "Bigin deal", toolName: "get_bigin_deal", toolSource: "bigin", expectedText: "📇 Consultant el deal a Bigin…"},
