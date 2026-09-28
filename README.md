@@ -17,6 +17,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Gmail draft creation and full-message updates with automatic Google OAuth token refresh
 - `web_search` tool backed by the Brave Search API for current, real-world information
 - `read_url` tool backed by the Jina AI Reader API for reading a full page, including JavaScript-rendered sites
+- Structured Diana Barcelona tour, FAQ, and terms lookup from a private DigitalOcean Spaces knowledge base, including 1–9-person price estimates
 - Local Wikipedia and OpenStreetMap MCP support with optional bearer authentication
 - Live Telegram typing and an editable thinking/tool-use progress message
 - Native Telegram Rich Message tables with a readable list fallback
@@ -52,6 +53,7 @@ internal/
     brave/                    # Native Brave web search tool and API client
     gmail/                    # Native Gmail tools and OAuth client
     jina/                     # Native Jina page reader tool and API client
+    knowledgebase/            # Native S3-compatible Diana Barcelona knowledge-base tools
     mcpclient/                # Streamable HTTP MCP adapter
 migrations/                   # Goose SQL migrations
 prompts/
@@ -254,6 +256,14 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_JINA_READER_URL` | no | `https://r.jina.ai` | Jina Reader API base URL |
 | `TOOLS_JINA_TIMEOUT` | no | `60s` | Positive Go duration applied to each page read; Jina renders JavaScript, so reads are slower than a plain fetch |
 | `TOOLS_JINA_MAX_CONTENT_SIZE` | no | `12000` | Maximum bytes of page Markdown returned to the model; must be 500–200000 |
+| `TOOLS_KNOWLEDGEBASE_ENDPOINT` | together | — | S3-compatible Spaces endpoint, for example `https://lon1.digitaloceanspaces.com` |
+| `TOOLS_KNOWLEDGEBASE_ACCESS_KEY` | together | — | Read-only Spaces access key; never logged |
+| `TOOLS_KNOWLEDGEBASE_SECRET_KEY` | together | — | Read-only Spaces secret key; never logged |
+| `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` | together | — | Bucket containing the Diana Barcelona Markdown content |
+| `TOOLS_KNOWLEDGEBASE_REGION` | no | `lon1` | S3 signing region used by DigitalOcean Spaces |
+| `TOOLS_KNOWLEDGEBASE_PREFIX` | no | `web/content` | Root prefix holding Hugo Markdown files |
+| `TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL` | no | `5m` | Positive cache duration before the object inventory and tour metadata refresh |
+| `TOOLS_KNOWLEDGEBASE_TIMEOUT` | no | `30s` | Positive duration applied to each S3-compatible request |
 | `TOOLS_MCPS` | no | empty | Comma-separated MCP server names; list membership enables a server by default |
 | `TOOLS_<NAME>_ENABLED` | no | list membership | Explicit per-server override; `true` may enable an unlisted known server and `false` disables a listed one |
 | `TOOLS_<NAME>_URL` | when enabled | — | Absolute Streamable HTTP MCP endpoint |
@@ -269,7 +279,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, plus `TOOLS_BRAVE_TOKEN` and `TOOLS_JINA_TOKEN`, as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_GMAIL_CLIENT_ID`, `TOOLS_KNOWLEDGEBASE_ENDPOINT`, and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, `TOOLS_BRAVE_TOKEN`, `TOOLS_JINA_TOKEN`, `TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
 
 For example, the liveness response has this shape:
 

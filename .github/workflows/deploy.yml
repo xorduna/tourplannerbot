@@ -110,6 +110,10 @@ jobs:
       TOOLS_GMAIL_CLIENT_SECRET: ${{ secrets.TOOLS_GMAIL_CLIENT_SECRET }}
       TOOLS_BRAVE_TOKEN: ${{ secrets.TOOLS_BRAVE_TOKEN }}
       TOOLS_JINA_TOKEN: ${{ secrets.TOOLS_JINA_TOKEN }}
+      TOOLS_KNOWLEDGEBASE_ENDPOINT: ${{ vars.TOOLS_KNOWLEDGEBASE_ENDPOINT || 'https://lon1.digitaloceanspaces.com' }}
+      TOOLS_KNOWLEDGEBASE_ACCESS_KEY: ${{ secrets.TOOLS_KNOWLEDGEBASE_ACCESS_KEY }}
+      TOOLS_KNOWLEDGEBASE_SECRET_KEY: ${{ secrets.TOOLS_KNOWLEDGEBASE_SECRET_KEY }}
+      TOOLS_KNOWLEDGEBASE_BUCKET_NAME: ${{ vars.TOOLS_KNOWLEDGEBASE_BUCKET_NAME || 'dianabcntours-kb' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

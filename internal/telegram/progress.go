@@ -289,6 +289,8 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "🌐 Cercant a Internet…"
 	case normalizedToolName == "read_url":
 		return "📄 Llegint la pàgina…"
+	case normalizedToolSource == "knowledge_base":
+		return "📚 Consultant la knowledge base…"
 	case normalizedToolName == "create_gmail_draft":
 		return "✉️ Creant l’esborrany a Gmail…"
 	case normalizedToolName == "update_gmail_draft":

@@ -25,6 +25,7 @@ import (
 	"tourplannerbot/internal/tools/draft"
 	"tourplannerbot/internal/tools/gmail"
 	"tourplannerbot/internal/tools/jina"
+	"tourplannerbot/internal/tools/knowledgebase"
 	"tourplannerbot/internal/tools/mcpclient"
 	"tourplannerbot/internal/webapp"
 
@@ -96,6 +97,7 @@ func run() error {
 		"gmail_enabled", applicationConfig.Tools.Gmail.Enabled,
 		"brave_enabled", applicationConfig.Tools.Brave.Enabled,
 		"jina_enabled", applicationConfig.Tools.Jina.Enabled,
+		"knowledge_base_enabled", applicationConfig.Tools.KnowledgeBase.Enabled,
 		"mcp_server_configuration_count", len(applicationConfig.Tools.MCPServers),
 		"status", "initializing",
 	)
@@ -299,6 +301,56 @@ func run() error {
 			"planned_tools", []string{"read_url"},
 			"status", "disabled",
 			"reason", "API token is not configured",
+		)
+	}
+	if applicationConfig.Tools.KnowledgeBase.Enabled {
+		knowledgeBaseClientInitializationStartedAt := time.Now()
+		logger.Info("initializing knowledge-base tool client",
+			"tool_source", "knowledge_base",
+			"planned_tools", []string{"get_knowledge_base_tour", "list_knowledge_base_pages", "list_knowledge_base_tours", "read_knowledge_base_page"},
+			"endpoint", applicationConfig.Tools.KnowledgeBase.Endpoint,
+			"bucket_name", applicationConfig.Tools.KnowledgeBase.BucketName,
+			"prefix", applicationConfig.Tools.KnowledgeBase.Prefix,
+			"refresh_interval", applicationConfig.Tools.KnowledgeBase.RefreshInterval.String(),
+			"timeout", applicationConfig.Tools.KnowledgeBase.CallTimeout.String(),
+			"status", "initializing",
+		)
+		knowledgeBaseClient, err := knowledgebase.NewClient(knowledgebase.Config{
+			Endpoint: applicationConfig.Tools.KnowledgeBase.Endpoint, AccessKey: applicationConfig.Tools.KnowledgeBase.AccessKey,
+			SecretKey: applicationConfig.Tools.KnowledgeBase.SecretKey, BucketName: applicationConfig.Tools.KnowledgeBase.BucketName,
+			Region: applicationConfig.Tools.KnowledgeBase.Region, CallTimeout: applicationConfig.Tools.KnowledgeBase.CallTimeout,
+		})
+		if err != nil {
+			return fmt.Errorf("initialize knowledge-base client: %w", err)
+		}
+		knowledgeBaseCatalog, err := knowledgebase.NewCatalog(knowledgeBaseClient, applicationConfig.Tools.KnowledgeBase.Prefix, applicationConfig.Tools.KnowledgeBase.RefreshInterval)
+		if err != nil {
+			return fmt.Errorf("initialize knowledge-base catalog: %w", err)
+		}
+		for _, toolConfiguration := range []struct {
+			name    string
+			factory func() (applicationTools.Tool, error)
+		}{
+			{name: "list_knowledge_base_pages", factory: func() (applicationTools.Tool, error) { return knowledgebase.NewListPages(knowledgeBaseCatalog) }},
+			{name: "list_knowledge_base_tours", factory: func() (applicationTools.Tool, error) { return knowledgebase.NewListTours(knowledgeBaseCatalog) }},
+			{name: "get_knowledge_base_tour", factory: func() (applicationTools.Tool, error) { return knowledgebase.NewGetTour(knowledgeBaseCatalog) }},
+			{name: "read_knowledge_base_page", factory: func() (applicationTools.Tool, error) { return knowledgebase.NewReadPage(knowledgeBaseCatalog) }},
+		} {
+			if err := initializeAndRegisterTool(logger, toolRegistry, toolConfiguration.name, "knowledge_base", toolConfiguration.factory); err != nil {
+				return fmt.Errorf("initialize or register %s tool: %w", toolConfiguration.name, err)
+			}
+		}
+		logger.Info("knowledge-base tool client initialized",
+			"tool_source", "knowledge_base",
+			"duration_ms", time.Since(knowledgeBaseClientInitializationStartedAt).Milliseconds(),
+			"status", "ready",
+		)
+	} else {
+		logger.Info("knowledge-base tools are disabled",
+			"tool_source", "knowledge_base",
+			"planned_tools", []string{"get_knowledge_base_tour", "list_knowledge_base_pages", "list_knowledge_base_tours", "read_knowledge_base_page"},
+			"status", "disabled",
+			"reason", "S3-compatible credentials are not configured",
 		)
 	}
 	mcpConnections := initializeMCPServers(applicationContext, logger, applicationConfig.Tools.MCPServers, toolRegistry)

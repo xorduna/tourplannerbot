@@ -15,23 +15,27 @@ import (
 )
 
 const (
-	defaultCurrentTimeTimezone = "Europe/Madrid"
-	defaultMCPTimeout          = 30 * time.Second
-	defaultBiginAccountsURL    = "https://accounts.zoho.eu"
-	defaultBiginAPIURL         = "https://www.zohoapis.eu"
-	defaultBiginTimeout        = 30 * time.Second
-	defaultGmailOAuthURL       = "https://oauth2.googleapis.com/token"
-	defaultGmailAPIURL         = "https://gmail.googleapis.com"
-	defaultGmailTimeout        = 30 * time.Second
-	defaultBraveAPIURL         = "https://api.search.brave.com"
-	defaultBraveTimeout        = 30 * time.Second
-	defaultBraveResultCount    = 5
-	maximumBraveResultCount    = 20
-	defaultJinaReaderURL       = "https://r.jina.ai"
-	defaultJinaTimeout         = 60 * time.Second
-	defaultJinaMaxContentSize  = 12000
-	minimumJinaMaxContentSize  = 500
-	maximumJinaMaxContentSize  = 200000
+	defaultCurrentTimeTimezone  = "Europe/Madrid"
+	defaultMCPTimeout           = 30 * time.Second
+	defaultBiginAccountsURL     = "https://accounts.zoho.eu"
+	defaultBiginAPIURL          = "https://www.zohoapis.eu"
+	defaultBiginTimeout         = 30 * time.Second
+	defaultGmailOAuthURL        = "https://oauth2.googleapis.com/token"
+	defaultGmailAPIURL          = "https://gmail.googleapis.com"
+	defaultGmailTimeout         = 30 * time.Second
+	defaultBraveAPIURL          = "https://api.search.brave.com"
+	defaultBraveTimeout         = 30 * time.Second
+	defaultBraveResultCount     = 5
+	maximumBraveResultCount     = 20
+	defaultJinaReaderURL        = "https://r.jina.ai"
+	defaultJinaTimeout          = 60 * time.Second
+	defaultJinaMaxContentSize   = 12000
+	minimumJinaMaxContentSize   = 500
+	maximumJinaMaxContentSize   = 200000
+	defaultKnowledgeBaseRegion  = "lon1"
+	defaultKnowledgeBasePrefix  = "web/content"
+	defaultKnowledgeBaseTTL     = 5 * time.Minute
+	defaultKnowledgeBaseTimeout = 30 * time.Second
 )
 
 var (
@@ -92,6 +96,20 @@ type JinaToolConfig struct {
 	MaximumContentSize int
 }
 
+// KnowledgeBaseToolConfig contains the S3-compatible DigitalOcean Spaces
+// connection settings used to retrieve Diana Barcelona's structured content.
+type KnowledgeBaseToolConfig struct {
+	Enabled         bool
+	Endpoint        string
+	AccessKey       string
+	SecretKey       string
+	BucketName      string
+	Region          string
+	Prefix          string
+	RefreshInterval time.Duration
+	CallTimeout     time.Duration
+}
+
 // MCPServerConfig contains the connection and authentication settings for one
 // Streamable HTTP MCP server.
 type MCPServerConfig struct {
@@ -105,12 +123,13 @@ type MCPServerConfig struct {
 
 // ToolsConfig contains configuration shared by the application's tools.
 type ToolsConfig struct {
-	CurrentTime CurrentTimeToolConfig
-	Bigin       BiginToolConfig
-	Gmail       GmailToolConfig
-	Brave       BraveToolConfig
-	Jina        JinaToolConfig
-	MCPServers  []MCPServerConfig
+	CurrentTime   CurrentTimeToolConfig
+	Bigin         BiginToolConfig
+	Gmail         GmailToolConfig
+	Brave         BraveToolConfig
+	Jina          JinaToolConfig
+	KnowledgeBase KnowledgeBaseToolConfig
+	MCPServers    []MCPServerConfig
 }
 
 // Config holds all application configuration values.
@@ -168,6 +187,10 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.jina.reader_url", defaultJinaReaderURL)
 	configuration.SetDefault("tools.jina.timeout", defaultJinaTimeout.String())
 	configuration.SetDefault("tools.jina.max_content_size", defaultJinaMaxContentSize)
+	configuration.SetDefault("tools.knowledgebase.region", defaultKnowledgeBaseRegion)
+	configuration.SetDefault("tools.knowledgebase.prefix", defaultKnowledgeBasePrefix)
+	configuration.SetDefault("tools.knowledgebase.refresh_interval", defaultKnowledgeBaseTTL.String())
+	configuration.SetDefault("tools.knowledgebase.timeout", defaultKnowledgeBaseTimeout.String())
 	configuration.SetDefault("log_level", "info")
 	configuration.SetDefault("port", 8080)
 	configuration.SetDefault("telegram.webapp_auth_max_age", "5m")
@@ -241,6 +264,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	knowledgeBaseConfiguration, err := loadKnowledgeBaseToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	mcpServers, err := loadMCPServerConfigurations(configuration)
 	if err != nil {
 		return nil, err
@@ -274,11 +301,12 @@ func LoadFromEnvironment() (*Config, error) {
 				Enabled:         currentTimeEnabled,
 				DefaultTimezone: currentTimeDefaultTimezone,
 			},
-			Bigin:      biginConfiguration,
-			Gmail:      gmailConfiguration,
-			Brave:      braveConfiguration,
-			Jina:       jinaConfiguration,
-			MCPServers: mcpServers,
+			Bigin:         biginConfiguration,
+			Gmail:         gmailConfiguration,
+			Brave:         braveConfiguration,
+			Jina:          jinaConfiguration,
+			KnowledgeBase: knowledgeBaseConfiguration,
+			MCPServers:    mcpServers,
 		},
 		AccessPIN:                accessPIN,
 		LogLevel:                 configuration.GetString("log_level"),
@@ -332,6 +360,59 @@ func loadJinaToolConfiguration(configuration *viper.Viper) (JinaToolConfig, erro
 	}
 	jinaConfiguration.Enabled = true
 	return jinaConfiguration, nil
+}
+
+// loadKnowledgeBaseToolConfiguration enables the knowledge-base tools only
+// when every S3-compatible credential and location setting is configured.
+func loadKnowledgeBaseToolConfiguration(configuration *viper.Viper) (KnowledgeBaseToolConfig, error) {
+	knowledgeBaseConfiguration := KnowledgeBaseToolConfig{
+		Endpoint:   strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.knowledgebase.endpoint")), "/"),
+		AccessKey:  strings.TrimSpace(configuration.GetString("tools.knowledgebase.access_key")),
+		SecretKey:  strings.TrimSpace(configuration.GetString("tools.knowledgebase.secret_key")),
+		BucketName: strings.TrimSpace(configuration.GetString("tools.knowledgebase.bucket_name")),
+		Region:     strings.TrimSpace(configuration.GetString("tools.knowledgebase.region")),
+		Prefix:     strings.Trim(strings.TrimSpace(configuration.GetString("tools.knowledgebase.prefix")), "/"),
+	}
+
+	configuredValueCount := 0
+	for _, configuredValue := range []string{
+		knowledgeBaseConfiguration.Endpoint,
+		knowledgeBaseConfiguration.AccessKey,
+		knowledgeBaseConfiguration.SecretKey,
+		knowledgeBaseConfiguration.BucketName,
+	} {
+		if configuredValue != "" {
+			configuredValueCount++
+		}
+	}
+	if configuredValueCount == 0 {
+		return knowledgeBaseConfiguration, nil
+	}
+	if configuredValueCount != 4 {
+		return KnowledgeBaseToolConfig{}, fmt.Errorf("TOOLS_KNOWLEDGEBASE_ENDPOINT, TOOLS_KNOWLEDGEBASE_ACCESS_KEY, TOOLS_KNOWLEDGEBASE_SECRET_KEY, and TOOLS_KNOWLEDGEBASE_BUCKET_NAME must either all be configured or all be empty")
+	}
+
+	var err error
+	knowledgeBaseConfiguration.Endpoint, err = optionalHTTPURL(knowledgeBaseConfiguration.Endpoint, "TOOLS_KNOWLEDGEBASE_ENDPOINT")
+	if err != nil {
+		return KnowledgeBaseToolConfig{}, err
+	}
+	if knowledgeBaseConfiguration.Region == "" {
+		return KnowledgeBaseToolConfig{}, fmt.Errorf("TOOLS_KNOWLEDGEBASE_REGION must not be empty")
+	}
+	if knowledgeBaseConfiguration.Prefix == "" {
+		return KnowledgeBaseToolConfig{}, fmt.Errorf("TOOLS_KNOWLEDGEBASE_PREFIX must not be empty")
+	}
+	knowledgeBaseConfiguration.RefreshInterval, err = positiveDuration(configuration.GetString("tools.knowledgebase.refresh_interval"), "TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL")
+	if err != nil {
+		return KnowledgeBaseToolConfig{}, err
+	}
+	knowledgeBaseConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.knowledgebase.timeout"), "TOOLS_KNOWLEDGEBASE_TIMEOUT")
+	if err != nil {
+		return KnowledgeBaseToolConfig{}, err
+	}
+	knowledgeBaseConfiguration.Enabled = true
+	return knowledgeBaseConfiguration, nil
 }
 
 // loadBraveToolConfiguration enables the Brave web search tool when a

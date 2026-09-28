@@ -14,6 +14,10 @@ methods:
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
   - jina.ReadURLTool.Execute: Reads one web page through Jina Reader and returns its Markdown content.
+  - knowledgebase.ListPagesTool.Execute: Lists Markdown paths in the Diana Barcelona knowledge base.
+  - knowledgebase.ListToursTool.Execute: Lists compact structured tour metadata from the knowledge base.
+  - knowledgebase.GetTourTool.Execute: Retrieves one tour and calculates its booking estimate for 1–9 people.
+  - knowledgebase.ReadPageTool.Execute: Reads one listed knowledge-base Markdown page.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -33,6 +37,8 @@ depends_on:
   - internal/tools/brave/web_search.go
   - internal/tools/jina/client.go
   - internal/tools/jina/read_url.go
+  - internal/tools/knowledgebase/client.go
+  - internal/tools/knowledgebase/tools.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
   - internal/tools/gmail/update_draft.go
@@ -188,6 +194,39 @@ token leaves it disabled without failing startup. `TOOLS_JINA_READER_URL`
 defaults to `https://r.jina.ai` and exists for tests and compatible gateways.
 `TOOLS_JINA_TIMEOUT` defaults to `60s` because rendering JavaScript is
 noticeably slower than a plain fetch.
+
+## Native Diana Barcelona knowledge-base tools
+
+The knowledge base is a private S3-compatible DigitalOcean Spaces bucket, not
+a vector store. It contains structured Hugo Markdown beneath
+`TOOLS_KNOWLEDGEBASE_PREFIX`, which defaults to `web/content`. The application
+uses four fixed native tools: `list_knowledge_base_pages`,
+`list_knowledge_base_tours`, `get_knowledge_base_tour`, and
+`read_knowledge_base_page`. Therefore the callable surface is stable even when
+editors add or update Markdown files in the bucket.
+
+The first call creates an inventory and parses tour frontmatter. It refreshes
+after `TOOLS_KNOWLEDGEBASE_REFRESH_INTERVAL`, defaulting to `5m`; simultaneous
+calls share one refresh. Markdown bodies are read only for the selected page
+or tour. The bucket keys are never accepted directly: page reads must use a
+relative Markdown path returned by the current inventory, preventing traversal
+outside the configured prefix.
+
+`get_knowledge_base_tour(identifier, people)` accepts a tour code or listed
+relative path. `people` defaults to 2 and is restricted to 1–9. The returned
+total is `price + (people × price_per_person)` when `price_per_person` exists;
+otherwise it is only `price`. The base price is never multiplied by the group
+size. Every result also includes the derived canonical Diana Barcelona URL and
+the source Markdown. An explicit `url` frontmatter field overrides the usual
+Hugo path mapping, and `slug` changes the final segment.
+
+The integration enables only when all of `TOOLS_KNOWLEDGEBASE_ENDPOINT`,
+`TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, `TOOLS_KNOWLEDGEBASE_SECRET_KEY`, and
+`TOOLS_KNOWLEDGEBASE_BUCKET_NAME` are present. `TOOLS_KNOWLEDGEBASE_REGION`
+defaults to `lon1`; `TOOLS_KNOWLEDGEBASE_TIMEOUT` defaults to `30s`. Requests
+use AWS Signature Version 4 with service `s3`. Credentials, document contents,
+and tool arguments are excluded from logs. Retrieved Markdown is source data,
+not executable model instructions.
 
 ## Native Gmail tools
 
