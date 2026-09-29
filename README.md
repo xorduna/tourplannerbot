@@ -246,7 +246,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_BIGIN_ACCOUNTS_URL` | no | `https://accounts.zoho.eu` | Zoho Accounts base URL for OAuth refreshes |
 | `TOOLS_BIGIN_API_URL` | no | `https://www.zohoapis.eu` | EU Zoho API base URL used for Bigin records |
 | `TOOLS_BIGIN_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Bigin API calls |
-| `TOOLS_BIGIN_METADATA_FIELD` | no | `Metadata` | Bigin API name for the JSON metadata custom field |
+| `TOOLS_BIGIN_METADATA_FIELD` | no | `metadata` | Bigin API name for the JSON metadata custom text field |
 | `TOOLS_MONEI_API_KEY` | no | — | MONEI server-side API key; its presence enables payment-link creation and status lookup |
 | `TOOLS_MONEI_API_URL` | no | `https://api.monei.com` | MONEI Payments API base URL |
 | `TOOLS_MONEI_TIMEOUT` | no | `30s` | Positive Go duration applied to each MONEI API call |
@@ -288,7 +288,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_GMAIL_CLIENT_ID`, `TOOLS_KNOWLEDGEBASE_ENDPOINT`, and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, `TOOLS_BRAVE_TOKEN`, `TOOLS_JINA_TOKEN`, `TOOLS_MONEI_API_KEY`, `TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_BIGIN_METADATA_FIELD` (the exact Bigin API name, normally `metadata`), `TOOLS_GMAIL_CLIENT_ID`, `TOOLS_KNOWLEDGEBASE_ENDPOINT`, and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, `TOOLS_BRAVE_TOKEN`, `TOOLS_JINA_TOKEN`, `TOOLS_MONEI_API_KEY`, `TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
 
 For example, the liveness response has this shape:
 

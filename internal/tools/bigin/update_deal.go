@@ -119,6 +119,7 @@ func (updateDealTool *UpdateDealTool) Execute(ctx context.Context, rawArguments 
 	metadataUpdates := make([]metadataUpdate, 0, len(arguments.Updates))
 	expectedUpdates := make(map[string]any, len(arguments.Updates))
 	seenPaths := make(map[string]bool, len(arguments.Updates))
+	metadataFieldAPIName := updateDealTool.metadataFieldAPIName
 	for _, update := range arguments.Updates {
 		path, value, err := validateDealUpdate(update.Path, update.Value, updateDealTool.metadataFieldAPIName)
 		if err != nil {
@@ -140,7 +141,11 @@ func (updateDealTool *UpdateDealTool) Execute(ctx context.Context, rawArguments 
 		if err != nil {
 			return "", fmt.Errorf("retrieve Bigin deal before metadata update: %w", err)
 		}
-		metadata, err := extractMetadata(dealResponse, updateDealTool.metadataFieldAPIName)
+		metadataFieldAPIName, err = resolveMetadataFieldAPIName(dealResponse, updateDealTool.metadataFieldAPIName)
+		if err != nil {
+			return "", err
+		}
+		metadata, err := extractMetadata(dealResponse, metadataFieldAPIName)
 		if err != nil {
 			return "", err
 		}
@@ -153,7 +158,10 @@ func (updateDealTool *UpdateDealTool) Execute(ctx context.Context, rawArguments 
 		if err != nil {
 			return "", fmt.Errorf("format Bigin metadata: %w", err)
 		}
-		updateRecord[updateDealTool.metadataFieldAPIName] = string(formattedMetadata)
+		// Use the API-name spelling returned by Bigin. Custom fields are often
+		// displayed as "metadata" while a deployment may have configured
+		// "Metadata"; Bigin treats the API name as case-sensitive on writes.
+		updateRecord[metadataFieldAPIName] = string(formattedMetadata)
 	}
 
 	requestBody := struct {
@@ -167,7 +175,7 @@ func (updateDealTool *UpdateDealTool) Execute(ctx context.Context, rawArguments 
 	if err != nil {
 		return "", fmt.Errorf("retrieve Bigin deal after update: %w", err)
 	}
-	if err := verifyDealUpdates(verifiedDealResponse, expectedUpdates, updateDealTool.metadataFieldAPIName); err != nil {
+	if err := verifyDealUpdates(verifiedDealResponse, expectedUpdates, metadataFieldAPIName); err != nil {
 		return "", err
 	}
 	encodedResult, err := json.Marshal(struct {
@@ -220,10 +228,38 @@ func validateDealUpdate(rawPath string, rawValue json.RawMessage, metadataFieldA
 	if len(pathSegments) != 1 || !biginFieldPathSegmentPattern.MatchString(path) {
 		return "", nil, fmt.Errorf("update path %q must be a Bigin field API name or metadata.<key>", path)
 	}
-	if path == metadataFieldAPIName {
+	if strings.EqualFold(path, metadataFieldAPIName) {
 		return "", nil, fmt.Errorf("update metadata through metadata.<key>, not %s", metadataFieldAPIName)
 	}
 	return path, value, nil
+}
+
+// resolveMetadataFieldAPIName finds the metadata field's exact API-name
+// spelling in a deal response. Bigin's API accepts field names case-sensitively
+// on writes, while environment configuration is commonly entered using the
+// display-name capitalization.
+func resolveMetadataFieldAPIName(dealResponse json.RawMessage, configuredName string) (string, error) {
+	updatedDeal, err := dealData(dealResponse)
+	if err != nil {
+		return "", err
+	}
+	if _, found := updatedDeal[configuredName]; found {
+		return configuredName, nil
+	}
+	matchedName := ""
+	for fieldName := range updatedDeal {
+		if !strings.EqualFold(fieldName, configuredName) {
+			continue
+		}
+		if matchedName != "" {
+			return "", fmt.Errorf("Bigin metadata field %q is ambiguous; set TOOLS_BIGIN_METADATA_FIELD to its exact API name", configuredName)
+		}
+		matchedName = fieldName
+	}
+	if matchedName == "" {
+		return "", fmt.Errorf("Bigin metadata field %q was not returned for this deal; set TOOLS_BIGIN_METADATA_FIELD to its exact API name", configuredName)
+	}
+	return matchedName, nil
 }
 
 // mergeMetadataValue deep-merges a scalar value at a validated metadata path.
@@ -249,17 +285,15 @@ func mergeMetadataValue(metadata map[string]any, path []string, value any) error
 
 // extractMetadata parses the configured Bigin metadata field as a JSON object.
 func extractMetadata(dealResponse json.RawMessage, metadataFieldAPIName string) (map[string]any, error) {
-	var responseEnvelope struct {
-		Data []map[string]any `json:"data"`
+	deal, err := dealData(dealResponse)
+	if err != nil {
+		return nil, err
 	}
-	if err := json.Unmarshal(dealResponse, &responseEnvelope); err != nil {
-		return nil, fmt.Errorf("decode Bigin deal metadata: %w", err)
+	rawMetadata, found := deal[metadataFieldAPIName]
+	if !found {
+		return nil, fmt.Errorf("Bigin metadata field %q was not returned for this deal", metadataFieldAPIName)
 	}
-	if len(responseEnvelope.Data) == 0 {
-		return nil, fmt.Errorf("Bigin deal was not found")
-	}
-	rawMetadata, found := responseEnvelope.Data[0][metadataFieldAPIName]
-	if !found || rawMetadata == nil {
+	if rawMetadata == nil {
 		return map[string]any{}, nil
 	}
 	metadataText, isString := rawMetadata.(string)
@@ -274,6 +308,20 @@ func extractMetadata(dealResponse json.RawMessage, metadataFieldAPIName string) 
 		return nil, fmt.Errorf("Bigin metadata field %q must contain a JSON object: %w", metadataFieldAPIName, err)
 	}
 	return metadata, nil
+}
+
+// dealData decodes the first Bigin deal record from a standard response.
+func dealData(dealResponse json.RawMessage) (map[string]any, error) {
+	var responseEnvelope struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(dealResponse, &responseEnvelope); err != nil {
+		return nil, fmt.Errorf("decode Bigin deal metadata: %w", err)
+	}
+	if len(responseEnvelope.Data) == 0 {
+		return nil, fmt.Errorf("Bigin deal was not found")
+	}
+	return responseEnvelope.Data[0], nil
 }
 
 // verifyDealUpdates confirms a subsequent Bigin read contains every requested

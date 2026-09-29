@@ -142,7 +142,8 @@ unchanged. For JSON metadata, use paths such as
 current metadata, deep-merges each listed path, and serializes the entire value
 with two-space indentation before it writes the configured metadata field. This
 prevents accidental replacement of unrelated metadata keys. The metadata field
-API name defaults to `Metadata` and can be changed with
+API name defaults to `metadata`, automatically matches capitalization returned
+by Bigin (for example `metadata`), and can be set exactly with
 `TOOLS_BIGIN_METADATA_FIELD`. After every PUT, the tool reads the deal again
 and verifies every requested path. It returns `verified_updates` only when all
 values persisted; an ignored field becomes an explicit error naming the failed

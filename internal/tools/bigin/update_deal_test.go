@@ -24,12 +24,12 @@ func TestUpdateDealMergesMetadataAndChangesSelectedFields(t *testing.T) {
 		case http.MethodGet:
 			getRequestCount++
 			if getRequestCount == 1 {
-				return jsonHTTPResponse(http.StatusOK, `{"data":[{"Metadata":"{\"existing\":\"value\",\"tour\":{\"language\":\"ca\"}}"}]}`), nil
+				return jsonHTTPResponse(http.StatusOK, `{"data":[{"metadata":"{\"existing\":\"value\",\"tour\":{\"language\":\"ca\"}}"}]}`), nil
 			}
-			return jsonHTTPResponse(http.StatusOK, `{"data":[{"Amount":275.5,"Payment_Link":"https://www.dianabarcelona.com/pay/af6029f80f5fc73a8ad2753eea0b1be0","Metadata":"{\"existing\":\"value\",\"monei_payment_id\":\"af6029f80f5fc73a8ad2753eea0b1be0\",\"tour\":{\"language\":\"es\"}}"}]}`), nil
+			return jsonHTTPResponse(http.StatusOK, `{"data":[{"Amount":275.5,"Payment_Link":"https://www.dianabarcelona.com/pay/af6029f80f5fc73a8ad2753eea0b1be0","metadata":"{\"existing\":\"value\",\"monei_payment_id\":\"af6029f80f5fc73a8ad2753eea0b1be0\",\"tour\":{\"language\":\"es\"}}"}]}`), nil
 		case http.MethodPut:
 			requestBody, _ := io.ReadAll(request.Body)
-			expectedBody := `{"data":[{"Amount":275.5,"Metadata":"{\n  \"existing\": \"value\",\n  \"monei_payment_id\": \"af6029f80f5fc73a8ad2753eea0b1be0\",\n  \"tour\": {\n    \"language\": \"es\"\n  }\n}","Payment_Link":"https://www.dianabarcelona.com/pay/af6029f80f5fc73a8ad2753eea0b1be0"}]}`
+			expectedBody := `{"data":[{"Amount":275.5,"Payment_Link":"https://www.dianabarcelona.com/pay/af6029f80f5fc73a8ad2753eea0b1be0","metadata":"{\n  \"existing\": \"value\",\n  \"monei_payment_id\": \"af6029f80f5fc73a8ad2753eea0b1be0\",\n  \"tour\": {\n    \"language\": \"es\"\n  }\n}"}]}`
 			if string(requestBody) != expectedBody {
 				t.Errorf("body = %s, want %s", requestBody, expectedBody)
 			}

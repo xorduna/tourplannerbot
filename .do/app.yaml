@@ -35,6 +35,9 @@ envs:
     scope: RUN_TIME
     type: SECRET
     value: "${TOOLS_BIGIN_REFRESH_TOKEN}"
+  - key: TOOLS_BIGIN_METADATA_FIELD
+    scope: RUN_TIME
+    value: "${TOOLS_BIGIN_METADATA_FIELD}"
   - key: TOOLS_GMAIL_CLIENT_ID
     scope: RUN_TIME
     value: "${TOOLS_GMAIL_CLIENT_ID}"

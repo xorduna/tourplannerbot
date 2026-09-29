@@ -132,5 +132,5 @@ trusted source before deployment.
 
 Before enabling this flow, configure these GitHub Actions values:
 
-- Repository variables: `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
+- Repository variables: `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_BIGIN_METADATA_FIELD` (the exact Bigin custom-field API name, normally `metadata`), and `TOOLS_GMAIL_CLIENT_ID`; `DO_DATABASE_ID` may override the database ID configured in the workflow. The production `APP_BASE_URL` is declared in `.do/app.yaml`.
 - Repository secrets: `DIGITALOCEAN_ACCESS_TOKEN`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `ACCESS_PIN`, `TOOLS_BIGIN_REFRESH_TOKEN`, `TOOLS_BIGIN_CLIENT_SECRET`, `TOOLS_GMAIL_REFRESH_TOKEN`, `TOOLS_GMAIL_CLIENT_SECRET`, and `TOOLS_MONEI_API_KEY`.

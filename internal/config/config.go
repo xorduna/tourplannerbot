@@ -20,7 +20,7 @@ const (
 	defaultBiginAccountsURL     = "https://accounts.zoho.eu"
 	defaultBiginAPIURL          = "https://www.zohoapis.eu"
 	defaultBiginTimeout         = 30 * time.Second
-	defaultBiginMetadataField   = "Metadata"
+	defaultBiginMetadataField   = "metadata"
 	defaultMoneiAPIURL          = "https://api.monei.com"
 	defaultMoneiTimeout         = 30 * time.Second
 	defaultMoneiPaymentLinkURL  = "https://www.dianabarcelona.com/pay"
