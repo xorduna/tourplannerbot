@@ -54,6 +54,10 @@ envs:
     scope: RUN_TIME
     type: SECRET
     value: "${TOOLS_JINA_TOKEN}"
+  - key: TOOLS_MONEI_API_KEY
+    scope: RUN_TIME
+    type: SECRET
+    value: "${TOOLS_MONEI_API_KEY}"
   - key: TOOLS_KNOWLEDGEBASE_ENDPOINT
     scope: RUN_TIME
     value: "${TOOLS_KNOWLEDGEBASE_ENDPOINT}"
