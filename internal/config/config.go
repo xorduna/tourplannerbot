@@ -20,6 +20,10 @@ const (
 	defaultBiginAccountsURL     = "https://accounts.zoho.eu"
 	defaultBiginAPIURL          = "https://www.zohoapis.eu"
 	defaultBiginTimeout         = 30 * time.Second
+	defaultBiginMetadataField   = "Metadata"
+	defaultMoneiAPIURL          = "https://api.monei.com"
+	defaultMoneiTimeout         = 30 * time.Second
+	defaultMoneiPaymentLinkURL  = "https://www.dianabarcelona.com/pay"
 	defaultGmailOAuthURL        = "https://oauth2.googleapis.com/token"
 	defaultGmailAPIURL          = "https://gmail.googleapis.com"
 	defaultGmailTimeout         = 30 * time.Second
@@ -53,13 +57,24 @@ type CurrentTimeToolConfig struct {
 // Bigin tools. The integration is enabled when all three OAuth credentials are
 // configured and remains disabled when all three are empty.
 type BiginToolConfig struct {
-	Enabled      bool
-	RefreshToken string
-	ClientID     string
-	ClientSecret string
-	AccountsURL  string
-	APIURL       string
-	CallTimeout  time.Duration
+	Enabled              bool
+	RefreshToken         string
+	ClientID             string
+	ClientSecret         string
+	AccountsURL          string
+	APIURL               string
+	CallTimeout          time.Duration
+	MetadataFieldAPIName string
+}
+
+// MoneiToolConfig contains the API settings for MONEI payment-link tools. The
+// integration is enabled when its server-side API key is configured.
+type MoneiToolConfig struct {
+	Enabled            bool
+	APIKey             string
+	APIURL             string
+	CallTimeout        time.Duration
+	PaymentLinkBaseURL string
 }
 
 // GmailToolConfig contains the credentials and endpoints shared by native
@@ -125,6 +140,7 @@ type MCPServerConfig struct {
 type ToolsConfig struct {
 	CurrentTime   CurrentTimeToolConfig
 	Bigin         BiginToolConfig
+	Monei         MoneiToolConfig
 	Gmail         GmailToolConfig
 	Brave         BraveToolConfig
 	Jina          JinaToolConfig
@@ -178,6 +194,10 @@ func LoadFromEnvironment() (*Config, error) {
 	configuration.SetDefault("tools.bigin.accounts_url", defaultBiginAccountsURL)
 	configuration.SetDefault("tools.bigin.api_url", defaultBiginAPIURL)
 	configuration.SetDefault("tools.bigin.timeout", defaultBiginTimeout.String())
+	configuration.SetDefault("tools.bigin.metadata_field", defaultBiginMetadataField)
+	configuration.SetDefault("tools.monei.api_url", defaultMoneiAPIURL)
+	configuration.SetDefault("tools.monei.timeout", defaultMoneiTimeout.String())
+	configuration.SetDefault("tools.monei.payment_link_base_url", defaultMoneiPaymentLinkURL)
 	configuration.SetDefault("tools.gmail.oauth_url", defaultGmailOAuthURL)
 	configuration.SetDefault("tools.gmail.api_url", defaultGmailAPIURL)
 	configuration.SetDefault("tools.gmail.timeout", defaultGmailTimeout.String())
@@ -252,6 +272,10 @@ func LoadFromEnvironment() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	moneiConfiguration, err := loadMoneiToolConfiguration(configuration)
+	if err != nil {
+		return nil, err
+	}
 	gmailConfiguration, err := loadGmailToolConfiguration(configuration)
 	if err != nil {
 		return nil, err
@@ -302,6 +326,7 @@ func LoadFromEnvironment() (*Config, error) {
 				DefaultTimezone: currentTimeDefaultTimezone,
 			},
 			Bigin:         biginConfiguration,
+			Monei:         moneiConfiguration,
 			Gmail:         gmailConfiguration,
 			Brave:         braveConfiguration,
 			Jina:          jinaConfiguration,
@@ -489,11 +514,12 @@ func loadGmailToolConfiguration(configuration *viper.Viper) (GmailToolConfig, er
 // and validates its optional endpoint and timeout overrides.
 func loadBiginToolConfiguration(configuration *viper.Viper) (BiginToolConfig, error) {
 	biginConfiguration := BiginToolConfig{
-		RefreshToken: strings.TrimSpace(configuration.GetString("tools.bigin.refresh_token")),
-		ClientID:     strings.TrimSpace(configuration.GetString("tools.bigin.client_id")),
-		ClientSecret: strings.TrimSpace(configuration.GetString("tools.bigin.client_secret")),
-		AccountsURL:  strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.accounts_url")), "/"),
-		APIURL:       strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.api_url")), "/"),
+		RefreshToken:         strings.TrimSpace(configuration.GetString("tools.bigin.refresh_token")),
+		ClientID:             strings.TrimSpace(configuration.GetString("tools.bigin.client_id")),
+		ClientSecret:         strings.TrimSpace(configuration.GetString("tools.bigin.client_secret")),
+		AccountsURL:          strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.accounts_url")), "/"),
+		APIURL:               strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.bigin.api_url")), "/"),
+		MetadataFieldAPIName: strings.TrimSpace(configuration.GetString("tools.bigin.metadata_field")),
 	}
 
 	configuredCredentialCount := 0
@@ -522,8 +548,40 @@ func loadBiginToolConfiguration(configuration *viper.Viper) (BiginToolConfig, er
 	if err != nil {
 		return BiginToolConfig{}, err
 	}
+	if biginConfiguration.MetadataFieldAPIName == "" {
+		return BiginToolConfig{}, fmt.Errorf("TOOLS_BIGIN_METADATA_FIELD must not be empty")
+	}
 	biginConfiguration.Enabled = true
 	return biginConfiguration, nil
+}
+
+// loadMoneiToolConfiguration enables MONEI when an API key is present and
+// validates endpoint, timeout, and the canonical public payment-link URL.
+func loadMoneiToolConfiguration(configuration *viper.Viper) (MoneiToolConfig, error) {
+	moneiConfiguration := MoneiToolConfig{
+		APIKey:             strings.TrimSpace(configuration.GetString("tools.monei.api_key")),
+		APIURL:             strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.monei.api_url")), "/"),
+		PaymentLinkBaseURL: strings.TrimRight(strings.TrimSpace(configuration.GetString("tools.monei.payment_link_base_url")), "/"),
+	}
+	if moneiConfiguration.APIKey == "" {
+		return moneiConfiguration, nil
+	}
+
+	var err error
+	moneiConfiguration.APIURL, err = optionalHTTPURL(moneiConfiguration.APIURL, "TOOLS_MONEI_API_URL")
+	if err != nil {
+		return MoneiToolConfig{}, err
+	}
+	moneiConfiguration.PaymentLinkBaseURL, err = optionalHTTPURL(moneiConfiguration.PaymentLinkBaseURL, "TOOLS_MONEI_PAYMENT_LINK_BASE_URL")
+	if err != nil {
+		return MoneiToolConfig{}, err
+	}
+	moneiConfiguration.CallTimeout, err = positiveDuration(configuration.GetString("tools.monei.timeout"), "TOOLS_MONEI_TIMEOUT")
+	if err != nil {
+		return MoneiToolConfig{}, err
+	}
+	moneiConfiguration.Enabled = true
+	return moneiConfiguration, nil
 }
 
 // loadMCPServerConfigurations loads the dynamic TOOLS_MCPS list and applies

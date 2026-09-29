@@ -27,6 +27,8 @@ import (
 	"tourplannerbot/internal/tools/jina"
 	"tourplannerbot/internal/tools/knowledgebase"
 	"tourplannerbot/internal/tools/mcpclient"
+	"tourplannerbot/internal/tools/monei"
+	"tourplannerbot/internal/tools/randomnumber"
 	"tourplannerbot/internal/webapp"
 
 	"github.com/go-telegram/bot"
@@ -94,6 +96,7 @@ func run() error {
 	logger.Info("tool initialization started",
 		"current_time_enabled", applicationConfig.Tools.CurrentTime.Enabled,
 		"bigin_enabled", applicationConfig.Tools.Bigin.Enabled,
+		"monei_enabled", applicationConfig.Tools.Monei.Enabled,
 		"gmail_enabled", applicationConfig.Tools.Gmail.Enabled,
 		"brave_enabled", applicationConfig.Tools.Brave.Enabled,
 		"jina_enabled", applicationConfig.Tools.Jina.Enabled,
@@ -115,12 +118,17 @@ func run() error {
 			"reason", "disabled by configuration",
 		)
 	}
+	if err := initializeAndRegisterTool(logger, toolRegistry, "random_number", "native", func() (applicationTools.Tool, error) {
+		return randomnumber.New(), nil
+	}); err != nil {
+		return fmt.Errorf("initialize or register random_number tool: %w", err)
+	}
 	var biginClient *bigin.Client
 	if applicationConfig.Tools.Bigin.Enabled {
 		biginClientInitializationStartedAt := time.Now()
 		logger.Info("initializing Bigin tool client",
 			"tool_source", "bigin",
-			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts"},
+			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts", "update_bigin_deal"},
 			"api_url", applicationConfig.Tools.Bigin.APIURL,
 			"accounts_url", applicationConfig.Tools.Bigin.AccountsURL,
 			"timeout", applicationConfig.Tools.Bigin.CallTimeout.String(),
@@ -164,12 +172,67 @@ func run() error {
 		}); err != nil {
 			return fmt.Errorf("initialize or register search_bigin_contacts tool: %w", err)
 		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "update_bigin_deal", "bigin", func() (applicationTools.Tool, error) {
+			return bigin.NewUpdateDeal(biginClient, bigin.UpdateDealConfig{
+				MetadataFieldAPIName: applicationConfig.Tools.Bigin.MetadataFieldAPIName,
+			})
+		}); err != nil {
+			return fmt.Errorf("initialize or register update_bigin_deal tool: %w", err)
+		}
 	} else {
 		logger.Info("Bigin tools are disabled",
 			"tool_source", "bigin",
-			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts"},
+			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts", "update_bigin_deal"},
 			"status", "disabled",
 			"reason", "OAuth credentials are not configured",
+		)
+	}
+	if applicationConfig.Tools.Monei.Enabled {
+		moneiClientInitializationStartedAt := time.Now()
+		logger.Info("initializing MONEI tool client",
+			"tool_source", "monei",
+			"planned_tools", []string{"create_monei_payment_link", "get_monei_payment"},
+			"api_url", applicationConfig.Tools.Monei.APIURL,
+			"payment_link_base_url", applicationConfig.Tools.Monei.PaymentLinkBaseURL,
+			"timeout", applicationConfig.Tools.Monei.CallTimeout.String(),
+			"status", "initializing",
+		)
+		moneiClient, moneiClientError := monei.NewClient(monei.Config{
+			APIKey:             applicationConfig.Tools.Monei.APIKey,
+			APIURL:             applicationConfig.Tools.Monei.APIURL,
+			CallTimeout:        applicationConfig.Tools.Monei.CallTimeout,
+			PaymentLinkBaseURL: applicationConfig.Tools.Monei.PaymentLinkBaseURL,
+		})
+		if moneiClientError != nil {
+			logger.Error("failed to initialize MONEI tool client",
+				"tool_source", "monei",
+				"duration_ms", time.Since(moneiClientInitializationStartedAt).Milliseconds(),
+				"status", "failed",
+				"error", moneiClientError,
+			)
+			return fmt.Errorf("initialize MONEI client: %w", moneiClientError)
+		}
+		logger.Info("MONEI tool client initialized",
+			"tool_source", "monei",
+			"duration_ms", time.Since(moneiClientInitializationStartedAt).Milliseconds(),
+			"status", "ready",
+		)
+		if err := initializeAndRegisterTool(logger, toolRegistry, "create_monei_payment_link", "monei", func() (applicationTools.Tool, error) {
+			return monei.NewCreatePaymentLink(moneiClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register create_monei_payment_link tool: %w", err)
+		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "get_monei_payment", "monei", func() (applicationTools.Tool, error) {
+			return monei.NewGetPayment(moneiClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register get_monei_payment tool: %w", err)
+		}
+	} else {
+		logger.Info("MONEI tools are disabled",
+			"tool_source", "monei",
+			"planned_tools", []string{"create_monei_payment_link", "get_monei_payment"},
+			"status", "disabled",
+			"reason", "API key is not configured",
 		)
 	}
 	if applicationConfig.Tools.Gmail.Enabled {

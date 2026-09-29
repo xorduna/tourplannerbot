@@ -29,6 +29,11 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("TOOLS_BIGIN_ACCOUNTS_URL", "")
 	t.Setenv("TOOLS_BIGIN_API_URL", "")
 	t.Setenv("TOOLS_BIGIN_TIMEOUT", "")
+	t.Setenv("TOOLS_BIGIN_METADATA_FIELD", "")
+	t.Setenv("TOOLS_MONEI_API_KEY", "")
+	t.Setenv("TOOLS_MONEI_API_URL", "")
+	t.Setenv("TOOLS_MONEI_TIMEOUT", "")
+	t.Setenv("TOOLS_MONEI_PAYMENT_LINK_BASE_URL", "")
 	t.Setenv("TOOLS_GMAIL_REFRESH_TOKEN", "")
 	t.Setenv("TOOLS_GMAIL_CLIENT_ID", "")
 	t.Setenv("TOOLS_GMAIL_CLIENT_SECRET", "")
@@ -290,6 +295,30 @@ func TestLoadFromEnvironmentRejectsPartialBiginCredentials(t *testing.T) {
 
 	if _, err := LoadFromEnvironment(); err == nil {
 		t.Fatal("LoadFromEnvironment returned nil error for partial Bigin credentials")
+	}
+}
+
+// TestLoadFromEnvironmentEnablesMoneiWithItsAPIKey verifies the payment tools
+// are independently enabled and receive their canonical public link base.
+func TestLoadFromEnvironmentEnablesMoneiWithItsAPIKey(t *testing.T) {
+	setRequiredEnvironment(t)
+	t.Setenv("TOOLS_MONEI_API_KEY", "monei-api-key")
+
+	applicationConfig, err := LoadFromEnvironment()
+	if err != nil {
+		t.Fatalf("LoadFromEnvironment returned an error: %v", err)
+	}
+	if !applicationConfig.Tools.Monei.Enabled {
+		t.Fatal("Tools.Monei.Enabled = false, want true")
+	}
+	if applicationConfig.Tools.Monei.APIURL != "https://api.monei.com" {
+		t.Errorf("Tools.Monei.APIURL = %q", applicationConfig.Tools.Monei.APIURL)
+	}
+	if applicationConfig.Tools.Monei.PaymentLinkBaseURL != "https://www.dianabarcelona.com/pay" {
+		t.Errorf("Tools.Monei.PaymentLinkBaseURL = %q", applicationConfig.Tools.Monei.PaymentLinkBaseURL)
+	}
+	if applicationConfig.Tools.Monei.CallTimeout != 30*time.Second {
+		t.Errorf("Tools.Monei.CallTimeout = %s, want 30s", applicationConfig.Tools.Monei.CallTimeout)
 	}
 }
 

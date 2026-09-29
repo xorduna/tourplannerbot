@@ -179,9 +179,13 @@ methods:
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
   - tools.NewExecutionContext: Carries trusted Telegram conversation data to native tools.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
+  - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
+  - monei.CreatePaymentLinkTool.Execute: Creates a MONEI payment link from neutral payment inputs.
+  - monei.GetPaymentTool.Execute: Retrieves one MONEI payment by ID.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
   - jina.ReadURLTool.Execute: Reads one web page through Jina Reader and returns its Markdown content.
   - knowledgebase.ListPagesTool.Execute: Lists Markdown paths in the Diana Barcelona knowledge base.
@@ -199,10 +203,14 @@ depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/randomnumber/random_number.go
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
+  - internal/tools/bigin/update_deal.go
+  - internal/tools/monei/client.go
+  - internal/tools/monei/payment.go
   - internal/tools/brave/client.go
   - internal/tools/brave/web_search.go
   - internal/tools/jina/client.go
