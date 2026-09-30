@@ -2,9 +2,13 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	applicationTools "tourplannerbot/internal/tools"
@@ -141,6 +145,73 @@ func TestClientGenerateSerializesPersistedToolExchange(t *testing.T) {
 type inputMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+}
+
+// TestClientGenerateSendsTemporaryPDFInput verifies files held only for the
+// active response loop reach Responses as input_file data URLs, not as text or
+// a persistent OpenAI Files upload.
+func TestClientGenerateSendsTemporaryPDFInput(t *testing.T) {
+	temporaryFile := filepath.Join(t.TempDir(), "entry.pdf")
+	if err := os.WriteFile(temporaryFile, []byte("PDF bytes"), 0o600); err != nil {
+		t.Fatalf("write temporary PDF: %v", err)
+	}
+	testServer := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		var requestPayload struct {
+			Input []struct {
+				Role    string `json:"role"`
+				Content []struct {
+					Type     string `json:"type"`
+					Filename string `json:"filename"`
+					FileData string `json:"file_data"`
+					Text     string `json:"text"`
+				} `json:"content"`
+			} `json:"input"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&requestPayload); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		if len(requestPayload.Input) != 1 || requestPayload.Input[0].Role != "user" || len(requestPayload.Input[0].Content) != 2 {
+			t.Fatalf("input = %#v", requestPayload.Input)
+		}
+		filePart := requestPayload.Input[0].Content[0]
+		if filePart.Type != "input_file" || filePart.Filename != "entry.pdf" {
+			t.Errorf("file part = %#v", filePart)
+		}
+		encodedPDF := strings.TrimPrefix(filePart.FileData, "data:application/pdf;base64,")
+		decodedPDF, err := base64.StdEncoding.DecodeString(encodedPDF)
+		if err != nil || string(decodedPDF) != "PDF bytes" {
+			t.Errorf("file data = %q, %v", decodedPDF, err)
+		}
+		if textPart := requestPayload.Input[0].Content[1]; textPart.Type != "input_text" || textPart.Text != "Read this ticket." {
+			t.Errorf("text part = %#v", textPart)
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"id":"resp_pdf","output":[{"type":"message","content":[{"type":"output_text","text":"Ticket read."}]}],"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":0},"output_tokens":2,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":12}}`))
+	}))
+	defer testServer.Close()
+
+	client := NewClient("test-api-key", testServer.URL+"/v1", "openai", "gpt-6-luna", 128, nil)
+	generation, err := client.Generate(context.Background(), "Read attachments.", []Message{{
+		Role:    "user",
+		Content: "Read this ticket.",
+		FileInputs: []FileInput{{
+			Path:     temporaryFile,
+			Filename: "entry.pdf",
+			MIMEType: "application/pdf",
+		}},
+	}}, nil)
+	if err != nil {
+		t.Fatalf("Generate returned an error: %v", err)
+	}
+	if generation.Text != "Ticket read." {
+		t.Errorf("text = %q", generation.Text)
+	}
+}
+
+func TestInputMessageItemRejectsAssistantFileInput(t *testing.T) {
+	if _, err := inputMessageItem(Message{Role: "assistant", FileInputs: []FileInput{{Path: "ticket.pdf", Filename: "ticket.pdf", MIMEType: "application/pdf"}}}); err == nil {
+		t.Fatal("inputMessageItem accepted an assistant file input")
+	}
 }
 
 // TestClientGenerate verifies the OpenAI SDK request and text extraction.

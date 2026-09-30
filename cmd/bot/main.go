@@ -244,7 +244,7 @@ func run() error {
 		gmailClientInitializationStartedAt := time.Now()
 		logger.Info("initializing Gmail tool client",
 			"tool_source", "gmail",
-			"planned_tools", []string{"create_gmail_draft", "update_gmail_draft"},
+			"planned_tools", []string{"create_gmail_draft", "download_gmail_attachments", "search_gmail_messages", "update_gmail_draft"},
 			"api_url", applicationConfig.Tools.Gmail.APIURL,
 			"timeout", applicationConfig.Tools.Gmail.CallTimeout.String(),
 			"status", "initializing",
@@ -276,6 +276,16 @@ func run() error {
 		}); err != nil {
 			return fmt.Errorf("initialize or register create_gmail_draft tool: %w", err)
 		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "download_gmail_attachments", "gmail", func() (applicationTools.Tool, error) {
+			return gmail.NewDownloadAttachments(gmailClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register download_gmail_attachments tool: %w", err)
+		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "search_gmail_messages", "gmail", func() (applicationTools.Tool, error) {
+			return gmail.NewSearchMessages(gmailClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register search_gmail_messages tool: %w", err)
+		}
 		if err := initializeAndRegisterTool(logger, toolRegistry, "update_gmail_draft", "gmail", func() (applicationTools.Tool, error) {
 			return gmail.NewUpdateDraft(gmailClient)
 		}); err != nil {
@@ -284,7 +294,7 @@ func run() error {
 	} else {
 		logger.Info("Gmail tools are disabled",
 			"tool_source", "gmail",
-			"planned_tools", []string{"create_gmail_draft", "update_gmail_draft"},
+			"planned_tools", []string{"create_gmail_draft", "download_gmail_attachments", "search_gmail_messages", "update_gmail_draft"},
 			"status", "disabled",
 			"reason", "OAuth credentials are not configured",
 		)

@@ -3,9 +3,12 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -25,14 +28,28 @@ type Client struct {
 	pricing         *Pricing
 }
 
-// Message is one persisted text, reasoning, function-call, or function-output
-// item supplied as context to the Responses API.
+// Message is one persisted text, reasoning, function-call, function-output, or
+// ephemeral text-and-file item supplied as context to the Responses API.
 type Message struct {
 	Role          string
 	Content       string
 	ToolCallID    string
 	ToolName      string
 	ToolArguments string
+	FileInputs    []FileInput
+}
+
+const (
+	MaximumInputFileBytes  int64 = 45_000_000
+	MaximumInputFilesBytes int64 = 45_000_000
+)
+
+// FileInput describes an ephemeral local file included with one Responses API
+// message. It is never persisted in conversation history or tool results.
+type FileInput struct {
+	Path     string
+	Filename string
+	MIMEType string
 }
 
 // ToolCall is one function invocation requested by the model.
@@ -110,10 +127,11 @@ func (client *Client) Generate(ctx context.Context, instructions string, convers
 				))
 				continue
 			}
-			inputItems = append(inputItems, responses.ResponseInputItemParamOfMessage(
-				conversationMessage.Content,
-				responses.EasyInputMessageRole(conversationMessage.Role),
-			))
+			inputItem, err := inputMessageItem(conversationMessage)
+			if err != nil {
+				return generation, err
+			}
+			inputItems = append(inputItems, inputItem)
 		case "tool":
 			if conversationMessage.ToolCallID == "" {
 				return generation, fmt.Errorf("tool result is missing its call ID")
@@ -243,6 +261,66 @@ func (client *Client) Generate(ctx context.Context, instructions string, convers
 	generation.Text = responseText
 
 	return generation, nil
+}
+
+// inputMessageItem converts one persisted text message or one ephemeral
+// text-and-file message into a Responses API input item.
+func inputMessageItem(message Message) (responses.ResponseInputItemUnionParam, error) {
+	if len(message.FileInputs) == 0 {
+		return responses.ResponseInputItemParamOfMessage(message.Content, responses.EasyInputMessageRole(message.Role)), nil
+	}
+	if message.Role != "user" {
+		return responses.ResponseInputItemUnionParam{}, fmt.Errorf("file inputs are only supported in user messages")
+	}
+	content := make(responses.ResponseInputMessageContentListParam, 0, len(message.FileInputs)+1)
+	var totalFileBytes int64
+	for _, fileInput := range message.FileInputs {
+		fileInfo, err := os.Stat(strings.TrimSpace(fileInput.Path))
+		if err != nil {
+			return responses.ResponseInputItemUnionParam{}, fmt.Errorf("stat file input: %w", err)
+		}
+		if totalFileBytes+fileInfo.Size() > MaximumInputFilesBytes {
+			return responses.ResponseInputItemUnionParam{}, fmt.Errorf("combined file input size must not exceed %d bytes", MaximumInputFilesBytes)
+		}
+		fileData, filename, err := encodedFileInput(fileInput)
+		if err != nil {
+			return responses.ResponseInputItemUnionParam{}, err
+		}
+		content = append(content, responses.ResponseInputContentUnionParam{OfInputFile: &responses.ResponseInputFileParam{
+			Filename: openai.String(filename),
+			FileData: openai.String(fileData),
+		}})
+		totalFileBytes += fileInfo.Size()
+	}
+	content = append(content, responses.ResponseInputContentParamOfInputText(message.Content))
+	return responses.ResponseInputItemParamOfMessage(content, responses.EasyInputMessageRoleUser), nil
+}
+
+// encodedFileInput reads one bounded temporary file and encodes it as the data
+// URL required by Responses input_file. The caller keeps the file only for the
+// duration of the active response loop.
+func encodedFileInput(fileInput FileInput) (string, string, error) {
+	path := strings.TrimSpace(fileInput.Path)
+	filename := filepath.Base(strings.TrimSpace(fileInput.Filename))
+	mimeType := strings.TrimSpace(fileInput.MIMEType)
+	if path == "" || filename == "" || filename == "." || mimeType == "" {
+		return "", "", fmt.Errorf("file input path, filename, and MIME type are required")
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return "", "", fmt.Errorf("stat file input: %w", err)
+	}
+	if !fileInfo.Mode().IsRegular() {
+		return "", "", fmt.Errorf("file input must be a regular file")
+	}
+	if fileInfo.Size() <= 0 || fileInfo.Size() > MaximumInputFileBytes {
+		return "", "", fmt.Errorf("file input size must be between 1 and %d bytes", MaximumInputFileBytes)
+	}
+	fileContent, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", fmt.Errorf("read file input: %w", err)
+	}
+	return "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(fileContent), filename, nil
 }
 
 func estimateCostMicroUSD(usage responses.ResponseUsage, pricing Pricing) int64 {

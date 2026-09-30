@@ -83,6 +83,8 @@ func TestToolProgressText(t *testing.T) {
 		{name: "Bigin contacts", toolName: "search_bigin_contacts", toolSource: "bigin", expectedText: "👤 Buscant contactes a Bigin…"},
 		{name: "Gmail draft", toolName: "create_gmail_draft", toolSource: "gmail", expectedText: "✉️ Creant l’esborrany a Gmail…"},
 		{name: "Gmail draft update", toolName: "update_gmail_draft", toolSource: "gmail", expectedText: "✉️ Actualitzant l’esborrany a Gmail…"},
+		{name: "Gmail search", toolName: "search_gmail_messages", toolSource: "gmail", expectedText: "✉️ Cercant correus a Gmail…"},
+		{name: "Gmail attachment download", toolName: "download_gmail_attachments", toolSource: "gmail", expectedText: "📎 Descarregant adjunts de Gmail…"},
 		{name: "OpenStreetMap nearby", toolName: "query_nearby", toolSource: "openstreetmap", expectedText: "🗺️ Utilitzant OpenStreetMap per buscar llocs propers…"},
 		{name: "Wikipedia search", toolName: "search_wikipedia", toolSource: "wikipedia", expectedText: "🔎 Utilitzant Wikipedia per buscar informació…"},
 		{name: "unprefixed Wikipedia summary", toolName: "get_summary", expectedText: "🔎 Utilitzant Wikipedia per obtenir un resum…"},

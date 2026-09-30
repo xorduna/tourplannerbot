@@ -37,6 +37,18 @@ type ExecutionContext struct {
 	activeDraft     *models.Draft
 	createdDraft    *models.Draft
 	updatedDraft    *models.Draft
+	downloadedFiles []DownloadedFile
+}
+
+// DownloadedFile is a temporary file prepared by a trusted native tool for
+// delivery to the current Telegram conversation. Path and CleanupPath are
+// intentionally absent from LLM tool results.
+type DownloadedFile struct {
+	Path        string
+	Filename    string
+	MIMEType    string
+	Size        int64
+	CleanupPath string
 }
 
 // SetActiveDraft makes the current authorized draft available to native tools
@@ -102,4 +114,16 @@ func (toolExecutionContext *ExecutionContext) RecordUpdatedDraft(updatedDraft *m
 // UpdatedDraft returns the draft changed during this generation, if any.
 func (toolExecutionContext *ExecutionContext) UpdatedDraft() *models.Draft {
 	return toolExecutionContext.updatedDraft
+}
+
+// RecordDownloadedFile queues one temporary file for delivery after the model
+// has completed its response. Only native tools with the trusted context can
+// call this; model-provided arguments never select a filesystem path.
+func (toolExecutionContext *ExecutionContext) RecordDownloadedFile(downloadedFile DownloadedFile) {
+	toolExecutionContext.downloadedFiles = append(toolExecutionContext.downloadedFiles, downloadedFile)
+}
+
+// DownloadedFiles returns a copy of the files queued during this generation.
+func (toolExecutionContext *ExecutionContext) DownloadedFiles() []DownloadedFile {
+	return append([]DownloadedFile(nil), toolExecutionContext.downloadedFiles...)
 }

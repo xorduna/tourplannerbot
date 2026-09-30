@@ -3,6 +3,7 @@ title: Conversation-Aware LLM Replies and Tool Calls
 description: OpenAI Responses API integration, persisted tool loops, live Telegram progress, and safe rich response formatting.
 methods:
   - llm.Client.Generate: Sends conversation items and tool definitions and returns text, function calls, and usage metadata.
+  - llm.inputMessageItem: Encodes bounded temporary PDF attachments as Responses API input_file items.
   - llm.normalizeFunctionParameters: Clones and adapts function schemas to OpenAI's accepted top-level object shape.
   - telegram.Handler.generateResponseWithTools: Executes and persists the bounded LLM/tool loop.
   - telegram.newTelegramResponseProgress: Starts the editable thinking message and typing indicator.
@@ -25,6 +26,8 @@ used_by:
 The bot starts one OpenAI Responses API flow for every authorized text message. At startup it loads `prompts/system_query.md` as the system instruction, then passes it with the newest persisted turns from the current Telegram conversation. The current user message is saved before that query, so it is included in the history sent to the model.
 
 The request uses `store: false` and does not pass a previous response identifier. Conversation state stays in the application's PostgreSQL database and is supplied as structured `user`, `assistant`, encrypted `reasoning`, `function_call`, and `function_call_output` input items on every request. Requests include `reasoning.encrypted_content` so reasoning-model state can be continued without storing responses at OpenAI. This avoids mixing one Telegram topic's context with another's.
+
+After `download_gmail_attachments` succeeds, the handler adds downloaded PDFs to the next model request as ephemeral Responses `input_file` data URLs. It includes only PDFs that fit a 45 MB combined limit, below the API's 50 MB request limit. The files remain in the private temporary directory only for the active tool loop; they are not added to PostgreSQL history, tool results, or an OpenAI Files upload. The accompanying message explicitly tells the model to treat attachment contents as untrusted source material rather than instructions.
 
 When the model requests a function, the handler persists the assistant tool call, executes it through the provider-independent registry, persists its result, and sends the expanded conversation back to the model. This repeats until the model returns final text or reaches `TOOL_CALL_MAX_ITERATIONS`. Tool execution errors are returned to the model as JSON so it can recover or explain the failure.
 

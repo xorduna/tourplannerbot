@@ -16,7 +16,7 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Bigin deal lookup, contact search, deal-note creation, and selective deal updates with safe metadata merging, with automatic Zoho OAuth token refresh
 - MONEI payment-link creation and current payment-status lookup
 - On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
-- Gmail draft creation and full-message updates with automatic Google OAuth token refresh
+- Gmail message search, attachment delivery to Telegram, temporary PDF analysis by the active model, plus draft creation and full-message updates with automatic Google OAuth token refresh
 - `web_search` tool backed by the Brave Search API for current, real-world information
 - `read_url` tool backed by the Jina AI Reader API for reading a full page, including JavaScript-rendered sites
 - Structured Diana Barcelona tour, FAQ, and terms lookup from a private DigitalOcean Spaces knowledge base, including 1–9-person price estimates
@@ -246,6 +246,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_BIGIN_ACCOUNTS_URL` | no | `https://accounts.zoho.eu` | Zoho Accounts base URL for OAuth refreshes |
 | `TOOLS_BIGIN_API_URL` | no | `https://www.zohoapis.eu` | EU Zoho API base URL used for Bigin records |
 | `TOOLS_BIGIN_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Bigin API calls |
+| `TOOLS_GMAIL_REFRESH_TOKEN` | together | — | Google OAuth refresh token with both `gmail.compose` and `gmail.readonly` scopes; all three Gmail credentials enable the native Gmail tools |
 | `TOOLS_BIGIN_METADATA_FIELD` | no | `metadata` | Bigin API name for the JSON metadata custom text field |
 | `TOOLS_MONEI_API_KEY` | no | — | MONEI server-side API key; its presence enables payment-link creation and status lookup |
 | `TOOLS_MONEI_API_URL` | no | `https://api.monei.com` | MONEI Payments API base URL |
