@@ -23,6 +23,8 @@ methods:
   - knowledgebase.GetTourTool.Execute: Retrieves one tour and calculates its booking estimate for 1–9 people.
   - knowledgebase.ReadPageTool.Execute: Reads one listed knowledge-base Markdown page.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
+  - gmail.DownloadAttachmentsTool.Execute: Downloads Gmail attachments, queues them for Telegram delivery, and makes bounded PDFs available to the active model response.
+  - gmail.SearchMessagesTool.Execute: Searches Gmail messages by sender, recipient, subject, or message text.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
   - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
@@ -49,6 +51,8 @@ depends_on:
   - internal/tools/knowledgebase/tools.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
+  - internal/tools/gmail/download_attachments.go
+  - internal/tools/gmail/search_messages.go
   - internal/tools/gmail/update_draft.go
   - internal/tools/draft/create_draft.go
   - internal/tools/draft/update_draft.go
@@ -289,6 +293,30 @@ not executable model instructions.
 
 ## Native Gmail tools
 
+`search_gmail_messages(from, to, subject, body, max_results, page_token)`
+searches the OAuth user's mailbox using any non-empty combination of the four
+dedicated filters. It returns at most 20 messages (10 by default), each with
+its message and thread IDs plus `From`, `To`, `Subject`, `Date`, and Gmail's
+compact snippet. The list endpoint returns only IDs, so the tool follows each
+result with a metadata-only `messages.get` request; it does not retrieve full
+body content or attachments itself. The optional `next_page_token` can be
+passed back unchanged with the same filters for the next page. Every filter is
+converted to a quoted literal, so it cannot introduce Gmail search operators.
+
+`download_gmail_attachments(message_id)` retrieves all named attachment MIME
+parts from the selected message and queues them for delivery to the same
+Telegram chat and forum topic that requested the tool. It must only be used
+when the user explicitly asks to retrieve or send an attachment. The tool
+downloads at most five files, with a 45 MB per-file and 100 MB combined limit;
+oversized or excess files are returned as skipped. Downloaded bytes are written
+to a fresh private operating-system temporary directory. PDFs that fit a
+separate 45 MB combined model-input budget are also provided to the next
+Responses request as temporary `input_file` data URLs so the active model can
+read them; their contents are explicitly untrusted source material, not
+instructions. No attachment is persisted in conversation history, tool results,
+or OpenAI Files. Once Telegram has attempted each `sendDocument` upload, the
+entire directory is removed, including when the response generation fails.
+
 `create_gmail_draft(to, cc, bcc, subject, body)` creates an unsent plain-text
 draft in the OAuth user's Gmail mailbox. It is exposed under this explicit name
 because `create_draft` already belongs to the application's collaborative draft
@@ -310,14 +338,17 @@ the returned draft ID matches the requested resource and never sends mail.
 The integration is enabled automatically when `TOOLS_GMAIL_REFRESH_TOKEN`,
 `TOOLS_GMAIL_CLIENT_ID`, and `TOOLS_GMAIL_CLIENT_SECRET` are all present. A
 partial set is a startup error and a completely absent set disables Gmail. The
-refresh token must have been authorized with the
-`https://www.googleapis.com/auth/gmail.compose` scope. Access tokens are
-refreshed at `https://oauth2.googleapis.com/token`, cached until shortly before
-expiry, and refreshed once more after an HTTP 401.
+refresh token must have been authorized with both the
+`https://www.googleapis.com/auth/gmail.compose` and
+`https://www.googleapis.com/auth/gmail.readonly` scopes. Existing compose-only
+refresh tokens must be reauthorized before the search tool can access the
+mailbox. Access tokens are refreshed at `https://oauth2.googleapis.com/token`,
+cached until shortly before expiry, and refreshed once more after an HTTP 401.
 
 `TOOLS_GMAIL_OAUTH_URL` and `TOOLS_GMAIL_API_URL` override the default Google
 endpoints for tests or compatible gateways. `TOOLS_GMAIL_TIMEOUT` defaults to
-`30s`. Credentials and complete MIME content are excluded from logs.
+`30s`. Credentials, attachment bytes, complete MIME content, and temporary
+filesystem paths are excluded from logs.
 
 ## Calling and persistence
 
