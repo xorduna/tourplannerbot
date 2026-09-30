@@ -9,9 +9,13 @@ methods:
   - tools.Registry.Execute: Dispatches JSON arguments to a tool by name.
   - tools.NewExecutionContext: Carries trusted Telegram conversation data to native tools.
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
+  - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
+  - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
+  - monei.CreatePaymentLinkTool.Execute: Creates a MONEI payment link from neutral payment inputs.
+  - monei.GetPaymentTool.Execute: Retrieves one MONEI payment by ID.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
   - jina.ReadURLTool.Execute: Reads one web page through Jina Reader and returns its Markdown content.
   - knowledgebase.ListPagesTool.Execute: Lists Markdown paths in the Diana Barcelona knowledge base.
@@ -31,10 +35,14 @@ depends_on:
   - internal/tools/types.go
   - internal/tools/registry.go
   - internal/tools/currenttime/current_time.go
+  - internal/tools/randomnumber/random_number.go
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
+  - internal/tools/bigin/update_deal.go
+  - internal/tools/monei/client.go
+  - internal/tools/monei/payment.go
   - internal/tools/brave/client.go
   - internal/tools/brave/web_search.go
   - internal/tools/jina/client.go
@@ -95,6 +103,16 @@ the tool to return a conflict rather than overwrite it.
 
 The tool is registered when `TOOLS_CURRENT_TIME_ENABLED=true`, the default. Invalid configured or requested timezones fail explicitly rather than falling back silently.
 
+## Native random-number tool
+
+`random_number(mode, minimum, maximum)` generates one value using the operating
+system's cryptographically secure random source. `mode=integer` accepts only
+signed 64-bit integer limits and returns an unbiased value in the inclusive
+range `[minimum, maximum]`. `mode=float` accepts finite numeric limits and
+returns a value in the half-open range `[minimum, maximum)`. Equal float bounds
+return that exact value. The tool has no configuration or external service
+dependency and is always registered.
+
 ## Native Bigin tools
 
 `get_bigin_deal(deal_id)` retrieves one deal through the documented Bigin v2
@@ -119,6 +137,22 @@ refresh token needs pipeline creation access plus note creation access; the
 minimal scopes documented by Bigin are `ZohoBigin.modules.pipelines.CREATE` and
 `ZohoBigin.modules.notes.CREATE`.
 
+`update_bigin_deal(deal_id, updates)` is the standard focused write primitive.
+Each update carries a top-level Bigin field API name and a scalar value, so a
+negotiated price can use `Amount` and a payment link can use `Payment_Link`.
+Only listed fields are sent to Bigin; all unmentioned deal fields remain
+unchanged. For JSON metadata, use paths such as
+`metadata.monei_payment_id` or `metadata.tour.language`. The tool reads the
+current metadata, deep-merges each listed path, and serializes the entire value
+with two-space indentation before it writes the configured metadata field. This
+prevents accidental replacement of unrelated metadata keys. The metadata field
+API name defaults to `metadata`, automatically matches capitalization returned
+by Bigin (for example `metadata`), and can be set exactly with
+`TOOLS_BIGIN_METADATA_FIELD`. After every PUT, the tool reads the deal again
+and verifies every requested path. It returns `verified_updates` only when all
+values persisted; an ignored field becomes an explicit error naming the failed
+paths, rather than a misleading successful update.
+
 The tool is enabled automatically when `TOOLS_BIGIN_REFRESH_TOKEN`,
 `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_BIGIN_CLIENT_SECRET` are all present. A
 partial credential set is a startup error; an entirely absent set leaves Bigin
@@ -130,6 +164,31 @@ The default endpoints are `https://accounts.zoho.eu` and
 `https://www.zohoapis.eu`; they can be overridden with
 `TOOLS_BIGIN_ACCOUNTS_URL` and `TOOLS_BIGIN_API_URL`. `TOOLS_BIGIN_TIMEOUT`
 defaults to `30s`.
+
+## Native MONEI payment tools
+
+`create_monei_payment_link(amount, customer_email, customer_name,
+expiration_date, order_id, summary, allowed_payment_methods)` is intentionally
+deal-agnostic. It accepts the business amount as an exact EUR decimal string
+and converts it to MONEI's integer cents itself. It creates a `SALE` payment
+through `POST /v1/payments` with `currency: EUR`, the selected `bizum` and/or
+`card` payment methods, customer fields, an `expireAt` Unix timestamp, and a
+MONEI `metadata.summary` field. An ISO date expires at 23:59:59 in
+Europe/Madrid; an RFC 3339 timestamp is preserved exactly. The result includes
+the API payment object plus `payment_link`, constructed from the configured
+Diana Barcelona canonical base (`https://www.dianabarcelona.com/pay` by
+default) and MONEI's returned ID.
+
+`get_monei_payment(payment_id)` reads the complete current object through
+`GET /v1/payments/{payment_id}`. It accepts only an opaque payment ID, never a
+full URL, so callers must extract the ID from Bigin's `Payment Link` first.
+
+MONEI is enabled only when `TOOLS_MONEI_API_KEY` is configured. Its default API
+endpoint is `https://api.monei.com`, and `TOOLS_MONEI_API_URL`,
+`TOOLS_MONEI_TIMEOUT` (default `30s`), and `TOOLS_MONEI_PAYMENT_LINK_BASE_URL`
+are available for compatible endpoints, tests, and a future custom-domain
+change. The API key is sent in MONEI's `Authorization` header and is never
+logged.
 
 ## Native Brave web search tool
 

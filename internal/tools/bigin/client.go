@@ -94,6 +94,15 @@ func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody 
 	return client.do(ctx, http.MethodPost, apiPath, encodedRequestBody)
 }
 
+// putJSON performs one authenticated PUT request with a JSON body.
+func (client *Client) putJSON(ctx context.Context, apiPath string, requestBody any) ([]byte, error) {
+	encodedRequestBody, err := json.Marshal(requestBody)
+	if err != nil {
+		return nil, fmt.Errorf("encode Bigin API request: %w", err)
+	}
+	return client.do(ctx, http.MethodPut, apiPath, encodedRequestBody)
+}
+
 // do performs an authenticated Bigin request. An unauthorized response
 // invalidates the cached token and is retried once with a newly refreshed one.
 func (client *Client) do(ctx context.Context, method string, apiPath string, requestBody []byte) ([]byte, error) {

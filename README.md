@@ -12,7 +12,9 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Dynamic MCP tool discovery over Streamable HTTP
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
-- Bigin deal lookup, contact search, and deal-note creation, with automatic Zoho OAuth token refresh
+- Cryptographically secure `random_number` tool for integer and floating-point ranges
+- Bigin deal lookup, contact search, deal-note creation, and selective deal updates with safe metadata merging, with automatic Zoho OAuth token refresh
+- MONEI payment-link creation and current payment-status lookup
 - On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
 - Gmail message search, attachment delivery to Telegram, temporary PDF analysis by the active model, plus draft creation and full-message updates with automatic Google OAuth token refresh
 - `web_search` tool backed by the Brave Search API for current, real-world information
@@ -49,7 +51,9 @@ internal/
     registry.go               # Shared native/MCP-ready tool registry
     types.go                  # Provider-independent tool contract
     currenttime/              # Native current_time tool
+    randomnumber/             # Native secure random-number tool
     bigin/                    # Native Zoho Bigin tools and OAuth client
+    monei/                    # Native MONEI payment-link tools
     brave/                    # Native Brave web search tool and API client
     gmail/                    # Native Gmail tools and OAuth client
     jina/                     # Native Jina page reader tool and API client
@@ -243,6 +247,12 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 | `TOOLS_BIGIN_API_URL` | no | `https://www.zohoapis.eu` | EU Zoho API base URL used for Bigin records |
 | `TOOLS_BIGIN_TIMEOUT` | no | `30s` | Positive Go duration applied to OAuth and Bigin API calls |
 | `TOOLS_GMAIL_REFRESH_TOKEN` | together | — | Google OAuth refresh token with both `gmail.compose` and `gmail.readonly` scopes; all three Gmail credentials enable the native Gmail tools |
+| `TOOLS_BIGIN_METADATA_FIELD` | no | `metadata` | Bigin API name for the JSON metadata custom text field |
+| `TOOLS_MONEI_API_KEY` | no | — | MONEI server-side API key; its presence enables payment-link creation and status lookup |
+| `TOOLS_MONEI_API_URL` | no | `https://api.monei.com` | MONEI Payments API base URL |
+| `TOOLS_MONEI_TIMEOUT` | no | `30s` | Positive Go duration applied to each MONEI API call |
+| `TOOLS_MONEI_PAYMENT_LINK_BASE_URL` | no | `https://www.dianabarcelona.com/pay` | Canonical public URL prefix saved on Bigin deals; the MONEI payment ID is appended |
+| `TOOLS_GMAIL_REFRESH_TOKEN` | together | — | Google OAuth refresh token with the `gmail.compose` scope; all three Gmail credentials enable the native Gmail draft tools |
 | `TOOLS_GMAIL_CLIENT_ID` | together | — | Google OAuth client ID |
 | `TOOLS_GMAIL_CLIENT_SECRET` | together | — | Google OAuth client secret; never logged |
 | `TOOLS_GMAIL_OAUTH_URL` | no | `https://oauth2.googleapis.com/token` | Google OAuth token endpoint |
@@ -279,7 +289,7 @@ Use `make migrate-status` to inspect the applied versions. `DATABASE_URL` must p
 - Runtime configuration is declared as app-level environment variables; credentials remain encrypted secrets
 - Push to GitHub → auto-deploy triggers; the GitHub Actions job waits for DigitalOcean App Platform to finish the rollout and fails if it fails
 - Every production image is tagged as `<branch>_<short-sha>` and also updates `latest`; the immutable tag is compiled into the binary and used by the deployment
-- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_GMAIL_CLIENT_ID`, `TOOLS_KNOWLEDGEBASE_ENDPOINT`, and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, `TOOLS_BRAVE_TOKEN`, `TOOLS_JINA_TOKEN`, `TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
+- The GitHub workflow runs migrations in a dedicated job before deploying the service. Set `DO_DATABASE_ID`, `DO_APP_ID`, `TELEGRAM_GROUP_CHAT_ID`, `TOOLS_BIGIN_CLIENT_ID`, `TOOLS_BIGIN_METADATA_FIELD` (the exact Bigin API name, normally `metadata`), `TOOLS_GMAIL_CLIENT_ID`, `TOOLS_KNOWLEDGEBASE_ENDPOINT`, and `TOOLS_KNOWLEDGEBASE_BUCKET_NAME` as GitHub Actions variables. Store both integrations' refresh tokens and client secrets, `TOOLS_BRAVE_TOKEN`, `TOOLS_JINA_TOKEN`, `TOOLS_MONEI_API_KEY`, `TOOLS_KNOWLEDGEBASE_ACCESS_KEY`, and `TOOLS_KNOWLEDGEBASE_SECRET_KEY` as GitHub Actions secrets alongside the other runtime credentials. `scripts/deploy-app.sh` requires every one of them and fails before contacting DigitalOcean when one is missing or empty.
 
 For example, the liveness response has this shape:
 

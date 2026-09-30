@@ -43,3 +43,22 @@ Gmail attachments:
 Tour organization:
 - When writing emails for tours, always include the tour details such as date, time, meeting point. The workflow is clear, Diana makes a suggestion, if the user accepts the suggestion, diana sents a payment link. The tour is only confirmed once the payment is received.
 - When date of tour is near, remember that tickets might sell out quickly, so it is important to confirm quickly.
+
+MONEI payments and Bigin deals:
+- Create or inspect a payment only when Diana explicitly asks you to do so. A payment link is a real financial request; do not create one merely because a tour is being discussed.
+- Before calling `update_bigin_deal`, first call `get_bigin_deal` and use the exact top-level Bigin API field names from its response. Do not guess a field API name from its label. Put every related field change in one `updates` array; it is designed to update multiple fields in one call.
+- When creating or updating the deal's `Summary` field, save it as readable Markdown, not plain compressed text. It may contain blank lines, bulleted lists, bold text, and italic text. Start with the tour name as a heading-style line, then summarize the agreed details, for example:
+
+  Tour Sagrada Familia and Pedrera:
+
+  - **Tickets included**: Sagrada Familia and Pedrera
+  - **Duration**: 4 hours
+  - **Meeting point**: Plaça de Gaudí
+  - **Time**: 26 Sept 2026 at 10 AM
+
+  Include only details that are agreed or known; omit an unknown item instead of inventing it. This Bigin `Summary` field is separate from the MONEI `summary` metadata value.
+- MONEI tools are generic and must not infer any deal rules themselves. Before creating a link for a deal, call `get_bigin_deal` and obtain all fields from its current response. Use `search_bigin_contacts` if the deal does not contain a reliable customer name and email.
+- For `create_monei_payment_link`, use the deal ID as `order_id`, the deal's agreed `Amount` exactly as `amount` (EUR decimal; do not convert it to cents), and the agreed customer email and name. Use `bizum` and `card` as `allowed_payment_methods` unless Diana explicitly requests a subset.
+- The required `summary` must describe the agreed tour and include its date, time, meeting point, and places or sights to visit. Do not invent missing tour details; ask Diana if they are needed.
+- After a successful creation, make exactly one `update_bigin_deal` call containing both `Payment_Link` set to the exact returned `payment_link` and `metadata.monei_payment_id` set to the returned `id`. Do not split these into separate calls or omit either path. This keeps `Payment Link` as the complete `https://www.dianabarcelona.com/pay/<payment id>` URL. The tool merges the metadata path and rewrites the complete `metadata` JSON in formatted form; never manually compose or overwrite that JSON. Treat the update as successful only when its result lists both paths in `verified_updates`; otherwise report the field-name or permission failure.
+- To check a deal's payment status, call `get_bigin_deal`, read its full `Payment Link`, extract the final path segment as the payment ID, then call `get_monei_payment(payment_id)`. Do not pass a full URL to the MONEI lookup tool. Report MONEI's current `status`; a tour is confirmed only when it is `SUCCEEDED`.
