@@ -62,11 +62,11 @@ func cleanupDownloadedFiles(downloadedFiles []applicationTools.DownloadedFile) {
 }
 
 // isManagedGmailTemporaryDirectory makes cleanup deliberately narrow: it can
-// remove only a direct child of the operating-system temporary directory whose
-// name was created by DownloadAttachmentsTool.
+// remove only a direct child of the dedicated tmp workspace whose name was
+// created by DownloadAttachmentsTool.
 func isManagedGmailTemporaryDirectory(rawPath string) bool {
 	cleanedPath := filepath.Clean(strings.TrimSpace(rawPath))
-	return strings.HasPrefix(filepath.Base(cleanedPath), "tourplannerbot-gmail-attachments-") && filepath.Dir(cleanedPath) == filepath.Clean(os.TempDir())
+	return strings.HasPrefix(filepath.Base(cleanedPath), "tourplannerbot-gmail-attachments-") && filepath.Base(filepath.Dir(cleanedPath)) == "tmp"
 }
 
 // modelPDFInputs selects PDF attachments that fit in one OpenAI file-input

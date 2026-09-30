@@ -29,15 +29,37 @@ const (
 // DownloadAttachmentsTool downloads the named attachments in one Gmail
 // message and queues their temporary files for the trusted Telegram handler.
 type DownloadAttachmentsTool struct {
-	client *Client
+	client        *Client
+	temporaryRoot string
+}
+
+// DownloadAttachmentsConfig controls where temporary attachment files are
+// created. An empty root retains the operating-system temporary directory for
+// backwards-compatible standalone usage.
+type DownloadAttachmentsConfig struct {
+	TemporaryRoot string
 }
 
 // NewDownloadAttachments creates the Gmail attachment download tool.
-func NewDownloadAttachments(client *Client) (*DownloadAttachmentsTool, error) {
+func NewDownloadAttachments(client *Client, configurations ...DownloadAttachmentsConfig) (*DownloadAttachmentsTool, error) {
 	if client == nil {
 		return nil, fmt.Errorf("Gmail client is required")
 	}
-	return &DownloadAttachmentsTool{client: client}, nil
+	if len(configurations) > 1 {
+		return nil, fmt.Errorf("at most one Gmail attachment download configuration is allowed")
+	}
+	temporaryRoot := os.TempDir()
+	if len(configurations) == 1 && strings.TrimSpace(configurations[0].TemporaryRoot) != "" {
+		temporaryRoot = strings.TrimSpace(configurations[0].TemporaryRoot)
+	}
+	rootInfo, err := os.Stat(temporaryRoot)
+	if err != nil {
+		return nil, fmt.Errorf("inspect Gmail attachment temporary root: %w", err)
+	}
+	if !rootInfo.IsDir() {
+		return nil, fmt.Errorf("Gmail attachment temporary root must be a directory")
+	}
+	return &DownloadAttachmentsTool{client: client, temporaryRoot: temporaryRoot}, nil
 }
 
 // Definition describes download_gmail_attachments to the LLM. It is an
@@ -141,7 +163,7 @@ func (downloadAttachmentsTool *DownloadAttachmentsTool) Execute(ctx context.Cont
 			continue
 		}
 		if temporaryDirectory == "" {
-			temporaryDirectory, err = os.MkdirTemp("", "tourplannerbot-gmail-attachments-")
+			temporaryDirectory, err = os.MkdirTemp(downloadAttachmentsTool.temporaryRoot, "tourplannerbot-gmail-attachments-")
 			if err != nil {
 				return "", fmt.Errorf("create Gmail attachment temporary directory: %w", err)
 			}

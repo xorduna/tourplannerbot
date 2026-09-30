@@ -37,7 +37,7 @@ func TestGetDealEmailsListsAndReadsOneMessage(t *testing.T) {
 		t.Fatalf("NewGetDealEmails returned an error: %v", err)
 	}
 
-	listResult, err := emailTool.Execute(context.Background(), json.RawMessage(`{"deal_id":"2034020000000489080"}`))
+	listResult, err := emailTool.Execute(context.Background(), json.RawMessage(`{"deal_id":"2034020000000489080","message_id":null}`))
 	if err != nil {
 		t.Fatalf("list Execute returned an error: %v", err)
 	}
@@ -68,9 +68,10 @@ func TestGetDealEmailsRejectsInvalidArgumentsWithoutCallingBigin(t *testing.T) {
 	}
 
 	for _, rawArguments := range []string{
-		`{"deal_id":"not-a-number"}`,
+		`{"deal_id":"not-a-number","message_id":null}`,
 		`{"deal_id":"123","message_id":"../../other"}`,
 		`{"deal_id":"123","unexpected":true}`,
+		`{"deal_id":"123"}`,
 		`{}`,
 	} {
 		if _, err := emailTool.Execute(context.Background(), json.RawMessage(rawArguments)); err == nil {
@@ -87,7 +88,7 @@ func TestGetDealEmailsDefinitionIsStrict(t *testing.T) {
 	if definition.Name != getDealEmailsToolName || definition.Source != "bigin" || !definition.Strict {
 		t.Errorf("definition = %#v", definition)
 	}
-	if required, ok := definition.Parameters["required"].([]string); !ok || len(required) != 1 || required[0] != "deal_id" {
-		t.Errorf("required = %#v, want only deal_id", definition.Parameters["required"])
+	if required, ok := definition.Parameters["required"].([]string); !ok || len(required) != 2 || required[0] != "deal_id" || required[1] != "message_id" {
+		t.Errorf("required = %#v, want deal_id and message_id", definition.Parameters["required"])
 	}
 }

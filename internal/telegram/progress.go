@@ -297,6 +297,8 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "✉️ Creant l’esborrany a Gmail…"
 	case normalizedToolName == "update_gmail_draft":
 		return "✉️ Actualitzant l’esborrany a Gmail…"
+	case normalizedToolName == "filesystem":
+		return "📁 Reanomenant el fitxer…"
 	case normalizedToolName == "search_gmail_messages":
 		return "✉️ Cercant correus a Gmail…"
 	case normalizedToolName == "download_gmail_attachments":

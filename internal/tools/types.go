@@ -127,3 +127,29 @@ func (toolExecutionContext *ExecutionContext) RecordDownloadedFile(downloadedFil
 func (toolExecutionContext *ExecutionContext) DownloadedFiles() []DownloadedFile {
 	return append([]DownloadedFile(nil), toolExecutionContext.downloadedFiles...)
 }
+
+// RenameDownloadedFile updates one file queued during this generation after a
+// trusted native tool has safely moved it inside its managed workspace.
+func (toolExecutionContext *ExecutionContext) RenameDownloadedFile(currentFilename string, newFilename string, newPath string) error {
+	matchingIndex := -1
+	for fileIndex, downloadedFile := range toolExecutionContext.downloadedFiles {
+		if downloadedFile.Filename != currentFilename {
+			continue
+		}
+		if matchingIndex >= 0 {
+			return errors.New("more than one downloaded file has that filename")
+		}
+		matchingIndex = fileIndex
+	}
+	if matchingIndex < 0 {
+		return errors.New("downloaded file was not found in this conversation")
+	}
+	for fileIndex, downloadedFile := range toolExecutionContext.downloadedFiles {
+		if fileIndex != matchingIndex && downloadedFile.Filename == newFilename {
+			return errors.New("another downloaded file already has the requested filename")
+		}
+	}
+	toolExecutionContext.downloadedFiles[matchingIndex].Filename = newFilename
+	toolExecutionContext.downloadedFiles[matchingIndex].Path = newPath
+	return nil
+}

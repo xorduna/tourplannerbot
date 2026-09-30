@@ -15,6 +15,7 @@ methods:
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
+  - filesystem.Tool.Execute: Renames a file queued for Telegram delivery in the active conversation.
   - monei.CreatePaymentLinkTool.Execute: Creates a MONEI payment link from neutral payment inputs.
   - monei.GetPaymentTool.Execute: Retrieves one MONEI payment by ID.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
@@ -42,6 +43,7 @@ depends_on:
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/bigin/update_deal.go
+  - internal/tools/filesystem/filesystem.go
   - internal/tools/monei/client.go
   - internal/tools/monei/payment.go
   - internal/tools/brave/client.go
@@ -124,7 +126,7 @@ and discuss with the user.
 
 `get_bigin_deal_emails(deal_id, message_id)` retrieves the Bigin email related
 list at `GET /bigin/v2/Pipelines/{record_id}/Emails` when `message_id` is
-omitted. Providing a message ID from that list retrieves the individual email,
+`null`. Providing a message ID from that list retrieves the individual email,
 including its `content` body, through the corresponding detail endpoint. It is
 read-only and returns Bigin's unchanged response.
 
@@ -318,13 +320,24 @@ Telegram chat and forum topic that requested the tool. It must only be used
 when the user explicitly asks to retrieve or send an attachment. The tool
 downloads at most five files, with a 45 MB per-file and 100 MB combined limit;
 oversized or excess files are returned as skipped. Downloaded bytes are written
-to a fresh private operating-system temporary directory. PDFs that fit a
+to a fresh private directory beneath the bot's `./tmp` workspace. PDFs that fit a
 separate 45 MB combined model-input budget are also provided to the next
 Responses request as temporary `input_file` data URLs so the active model can
 read them; their contents are explicitly untrusted source material, not
 instructions. No attachment is persisted in conversation history, tool results,
 or OpenAI Files. Once Telegram has attempted each `sendDocument` upload, the
 entire directory is removed, including when the response generation fails.
+
+## Native filesystem tool
+
+`filesystem(command, filename, new_filename)` currently supports only
+`command=rename_file`. It physically renames a file that was downloaded in the
+same tool loop, then updates the queued Telegram delivery to use the new name.
+All managed files live under the bot's `./tmp` workspace; paths are never
+provided to the model, and the tool rejects any file outside that workspace.
+The workspace is created automatically at startup and its contents are ignored
+by Git. New filesystem commands can extend the `command` enum without adding a
+new tool name.
 
 `create_gmail_draft(to, cc, bcc, subject, body)` creates an unsent plain-text
 draft in the OAuth user's Gmail mailbox. It is exposed under this explicit name

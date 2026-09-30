@@ -23,6 +23,7 @@ import (
 	"tourplannerbot/internal/tools/brave"
 	"tourplannerbot/internal/tools/currenttime"
 	"tourplannerbot/internal/tools/draft"
+	"tourplannerbot/internal/tools/filesystem"
 	"tourplannerbot/internal/tools/gmail"
 	"tourplannerbot/internal/tools/jina"
 	"tourplannerbot/internal/tools/knowledgebase"
@@ -122,6 +123,15 @@ func run() error {
 		return randomnumber.New(), nil
 	}); err != nil {
 		return fmt.Errorf("initialize or register random_number tool: %w", err)
+	}
+	filesystemTool, err := filesystem.New(filesystem.Config{Root: "./tmp"})
+	if err != nil {
+		return fmt.Errorf("initialize filesystem workspace: %w", err)
+	}
+	if err := initializeAndRegisterTool(logger, toolRegistry, "filesystem", "filesystem", func() (applicationTools.Tool, error) {
+		return filesystemTool, nil
+	}); err != nil {
+		return fmt.Errorf("initialize or register filesystem tool: %w", err)
 	}
 	var biginClient *bigin.Client
 	if applicationConfig.Tools.Bigin.Enabled {
@@ -277,7 +287,7 @@ func run() error {
 			return fmt.Errorf("initialize or register create_gmail_draft tool: %w", err)
 		}
 		if err := initializeAndRegisterTool(logger, toolRegistry, "download_gmail_attachments", "gmail", func() (applicationTools.Tool, error) {
-			return gmail.NewDownloadAttachments(gmailClient)
+			return gmail.NewDownloadAttachments(gmailClient, gmail.DownloadAttachmentsConfig{TemporaryRoot: filesystemTool.Root()})
 		}); err != nil {
 			return fmt.Errorf("initialize or register download_gmail_attachments tool: %w", err)
 		}

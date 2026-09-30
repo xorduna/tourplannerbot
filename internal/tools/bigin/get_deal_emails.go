@@ -40,7 +40,7 @@ func NewGetDealEmails(client *Client) (*GetDealEmailsTool, error) {
 func (getDealEmailsTool *GetDealEmailsTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:        getDealEmailsToolName,
-		Description: "Retrieve emails related to one Zoho Bigin deal (pipeline record). Call without message_id to list email summaries. Use a message_id returned by that list to retrieve one email's full detail, including its body, only when the user asks to read it.",
+		Description: "Retrieve emails related to one Zoho Bigin deal (pipeline record). Pass message_id as null to list email summaries. Use a message_id returned by that list to retrieve one email's full detail, including its body, only when the user asks to read it.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -49,11 +49,11 @@ func (getDealEmailsTool *GetDealEmailsTool) Definition() tools.Definition {
 					"description": "The numeric Zoho Bigin pipeline record ID.",
 				},
 				"message_id": map[string]any{
-					"type":        "string",
-					"description": "Optional email message ID returned by an earlier list call. Omit it to list related emails.",
+					"type":        []string{"string", "null"},
+					"description": "Email message ID returned by an earlier list call, or null to list related emails.",
 				},
 			},
-			"required":             []string{"deal_id"},
+			"required":             []string{"deal_id", "message_id"},
 			"additionalProperties": false,
 		},
 		Strict: true,
@@ -65,8 +65,8 @@ func (getDealEmailsTool *GetDealEmailsTool) Definition() tools.Definition {
 // untouched Bigin JSON envelope. It never changes the email or pipeline data.
 func (getDealEmailsTool *GetDealEmailsTool) Execute(ctx context.Context, rawArguments json.RawMessage) (string, error) {
 	arguments := struct {
-		DealID    string `json:"deal_id"`
-		MessageID string `json:"message_id"`
+		DealID    string          `json:"deal_id"`
+		MessageID json.RawMessage `json:"message_id"`
 	}{}
 	decoder := json.NewDecoder(bytes.NewReader(rawArguments))
 	decoder.DisallowUnknownFields()
@@ -87,7 +87,16 @@ func (getDealEmailsTool *GetDealEmailsTool) Execute(ctx context.Context, rawArgu
 	}
 
 	apiPath := "/bigin/v2/Pipelines/" + dealID + "/Emails"
-	messageID := strings.TrimSpace(arguments.MessageID)
+	messageID := ""
+	if arguments.MessageID == nil {
+		return "", fmt.Errorf("message_id is required; use null to list emails")
+	}
+	if !bytes.Equal(bytes.TrimSpace(arguments.MessageID), []byte("null")) {
+		if err := json.Unmarshal(arguments.MessageID, &messageID); err != nil {
+			return "", fmt.Errorf("message_id must be a string or null: %w", err)
+		}
+		messageID = strings.TrimSpace(messageID)
+	}
 	if messageID != "" {
 		if len(messageID) > maximumEmailMessageID || !biginEmailMessageIDPattern.MatchString(messageID) {
 			return "", fmt.Errorf("message_id must contain at most %d letters, digits, dots, at signs, hyphens, or underscores", maximumEmailMessageID)

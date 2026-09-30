@@ -71,7 +71,11 @@ func TestSendDownloadedFilesUploadsDocument(t *testing.T) {
 }
 
 func TestCleanupDownloadedFilesRemovesOnlyQueuedTemporaryDirectories(t *testing.T) {
-	temporaryDirectory, err := os.MkdirTemp("", "tourplannerbot-gmail-attachments-")
+	workspaceDirectory := filepath.Join(t.TempDir(), "tmp")
+	if err := os.MkdirAll(workspaceDirectory, 0o700); err != nil {
+		t.Fatalf("MkdirAll workspace: %v", err)
+	}
+	temporaryDirectory, err := os.MkdirTemp(workspaceDirectory, "tourplannerbot-gmail-attachments-")
 	if err != nil {
 		t.Fatalf("create temporary directory: %v", err)
 	}
