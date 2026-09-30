@@ -11,6 +11,7 @@ methods:
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
   - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
+  - bigin.GetDealEmailsTool.Execute: Retrieves the email related-list data for a deal.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
@@ -117,6 +118,12 @@ a string so large Zoho identifiers are never rounded. The response is returned
 as the complete JSON envelope, including custom fields, for the model to inspect
 and discuss with the user.
 
+`get_bigin_deal_emails(deal_id, message_id)` retrieves the Bigin email related
+list at `GET /bigin/v2/Pipelines/{record_id}/Emails` when `message_id` is
+omitted. Providing a message ID from that list retrieves the individual email,
+including its `content` body, through the corresponding detail endpoint. It is
+read-only and returns Bigin's unchanged response.
+
 `search_bigin_contacts(search_by, query)` retrieves contacts with the complete
 standard and custom field envelope returned by Bigin. `search_by=id` performs a
 direct `GET /bigin/v2/Contacts/{record_id}` lookup and is preferred whenever a
@@ -152,7 +159,9 @@ paths, rather than a misleading successful update.
 The tool is enabled automatically when `TOOLS_BIGIN_REFRESH_TOKEN`,
 `TOOLS_BIGIN_CLIENT_ID`, and `TOOLS_BIGIN_CLIENT_SECRET` are all present. A
 partial credential set is a startup error; an entirely absent set leaves Bigin
-disabled. Access tokens are refreshed through the EU Zoho Accounts endpoint,
+disabled. Bigin documents `ZohoBigin.modules.ALL` for related-list access, so
+the email tool needs a refresh token authorized with that scope. Access tokens
+are refreshed through the EU Zoho Accounts endpoint,
 cached until shortly before expiry, and refreshed once more after an HTTP 401.
 Neither OAuth credentials nor record payloads are written to application logs.
 

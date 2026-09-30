@@ -128,7 +128,7 @@ func run() error {
 		biginClientInitializationStartedAt := time.Now()
 		logger.Info("initializing Bigin tool client",
 			"tool_source", "bigin",
-			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts", "update_bigin_deal"},
+			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "get_bigin_deal_emails", "search_bigin_contacts", "update_bigin_deal"},
 			"api_url", applicationConfig.Tools.Bigin.APIURL,
 			"accounts_url", applicationConfig.Tools.Bigin.AccountsURL,
 			"timeout", applicationConfig.Tools.Bigin.CallTimeout.String(),
@@ -167,6 +167,11 @@ func run() error {
 		}); err != nil {
 			return fmt.Errorf("initialize or register get_bigin_deal tool: %w", err)
 		}
+		if err := initializeAndRegisterTool(logger, toolRegistry, "get_bigin_deal_emails", "bigin", func() (applicationTools.Tool, error) {
+			return bigin.NewGetDealEmails(biginClient)
+		}); err != nil {
+			return fmt.Errorf("initialize or register get_bigin_deal_emails tool: %w", err)
+		}
 		if err := initializeAndRegisterTool(logger, toolRegistry, "search_bigin_contacts", "bigin", func() (applicationTools.Tool, error) {
 			return bigin.NewSearchContacts(biginClient)
 		}); err != nil {
@@ -182,7 +187,7 @@ func run() error {
 	} else {
 		logger.Info("Bigin tools are disabled",
 			"tool_source", "bigin",
-			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "search_bigin_contacts", "update_bigin_deal"},
+			"planned_tools", []string{"add_bigin_deal_note", "get_bigin_deal", "get_bigin_deal_emails", "search_bigin_contacts", "update_bigin_deal"},
 			"status", "disabled",
 			"reason", "OAuth credentials are not configured",
 		)
