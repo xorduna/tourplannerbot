@@ -95,6 +95,7 @@ title: Conversation-Aware LLM Replies and Tool Calls
 description: OpenAI Responses API integration, persisted tool loops, live Telegram progress, and safe rich response formatting.
 methods:
   - llm.Client.Generate: Sends conversation items and tool definitions and returns text, function calls, and usage metadata.
+  - llm.inputMessageItem: Encodes bounded temporary PDF attachments as Responses API input_file items.
   - llm.normalizeFunctionParameters: Clones and adapts function schemas to OpenAI's accepted top-level object shape.
   - telegram.Handler.generateResponseWithTools: Executes and persists the bounded LLM/tool loop.
   - telegram.newTelegramResponseProgress: Starts the editable thinking message and typing indicator.
@@ -189,6 +190,8 @@ methods:
   - knowledgebase.GetTourTool.Execute: Retrieves one tour and calculates its booking estimate for 1–9 people.
   - knowledgebase.ReadPageTool.Execute: Reads one listed knowledge-base Markdown page.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
+  - gmail.DownloadAttachmentsTool.Execute: Downloads Gmail attachments, queues them for Telegram delivery, and makes bounded PDFs available to the active model response.
+  - gmail.SearchMessagesTool.Execute: Searches Gmail messages by sender, recipient, subject, or message text.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
   - draft.UpdateTool.Execute: Updates the active draft through the shared optimistic concurrency transaction.
@@ -211,6 +214,8 @@ depends_on:
   - internal/tools/knowledgebase/tools.go
   - internal/tools/gmail/client.go
   - internal/tools/gmail/create_draft.go
+  - internal/tools/gmail/download_attachments.go
+  - internal/tools/gmail/search_messages.go
   - internal/tools/gmail/update_draft.go
   - internal/tools/draft/create_draft.go
   - internal/tools/draft/update_draft.go

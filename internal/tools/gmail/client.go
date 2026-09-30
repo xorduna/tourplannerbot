@@ -84,9 +84,23 @@ func NewClient(configuration Config) (*Client, error) {
 // doJSON performs one authenticated JSON request. An unauthorized response
 // invalidates the cached token and is retried once with a fresh token.
 func (client *Client) doJSON(ctx context.Context, method string, apiPath string, requestBody any) ([]byte, error) {
-	encodedRequestBody, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, fmt.Errorf("encode Gmail API request: %w", err)
+	return client.doJSONWithResponseLimit(ctx, method, apiPath, requestBody, maximumResponseBytes)
+}
+
+// doJSONWithResponseLimit is doJSON with an explicit response cap for Gmail
+// resources such as base64url attachment payloads that are safely larger than
+// normal JSON API responses.
+func (client *Client) doJSONWithResponseLimit(ctx context.Context, method string, apiPath string, requestBody any, responseLimit int64) ([]byte, error) {
+	if responseLimit <= 0 {
+		return nil, fmt.Errorf("Gmail response limit must be positive")
+	}
+	var encodedRequestBody []byte
+	var err error
+	if requestBody != nil {
+		encodedRequestBody, err = json.Marshal(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("encode Gmail API request: %w", err)
+		}
 	}
 
 	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
@@ -95,13 +109,19 @@ func (client *Client) doJSON(ctx context.Context, method string, apiPath string,
 			return nil, err
 		}
 
-		request, err := http.NewRequestWithContext(ctx, method, client.apiURL+apiPath, bytes.NewReader(encodedRequestBody))
+		var bodyReader io.Reader
+		if requestBody != nil {
+			bodyReader = bytes.NewReader(encodedRequestBody)
+		}
+		request, err := http.NewRequestWithContext(ctx, method, client.apiURL+apiPath, bodyReader)
 		if err != nil {
 			return nil, fmt.Errorf("create Gmail API request: %w", err)
 		}
 		request.Header.Set("Authorization", "Bearer "+accessToken)
 		request.Header.Set("Accept", "application/json")
-		request.Header.Set("Content-Type", "application/json")
+		if requestBody != nil {
+			request.Header.Set("Content-Type", "application/json")
+		}
 
 		response, err := client.httpClient.Do(request)
 		if err != nil {
@@ -111,7 +131,7 @@ func (client *Client) doJSON(ctx context.Context, method string, apiPath string,
 			}
 			return nil, fmt.Errorf("call Gmail API: %w", err)
 		}
-		responseBody, readError := readLimitedResponse(response.Body)
+		responseBody, readError := readLimitedResponseWithLimit(response.Body, responseLimit)
 		closeError := response.Body.Close()
 		if readError != nil {
 			return nil, fmt.Errorf("read Gmail API response: %w", readError)
@@ -222,13 +242,17 @@ func validateBaseURL(rawURL string, fieldName string) error {
 // readLimitedResponse prevents an upstream response from consuming unbounded
 // memory while allowing normal Gmail resource payloads.
 func readLimitedResponse(responseBody io.Reader) ([]byte, error) {
-	limitedReader := io.LimitReader(responseBody, maximumResponseBytes+1)
+	return readLimitedResponseWithLimit(responseBody, maximumResponseBytes)
+}
+
+func readLimitedResponseWithLimit(responseBody io.Reader, maximumBytes int64) ([]byte, error) {
+	limitedReader := io.LimitReader(responseBody, maximumBytes+1)
 	responseBytes, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
 	}
-	if len(responseBytes) > maximumResponseBytes {
-		return nil, fmt.Errorf("response exceeded %d bytes", maximumResponseBytes)
+	if int64(len(responseBytes)) > maximumBytes {
+		return nil, fmt.Errorf("response exceeded %d bytes", maximumBytes)
 	}
 	return responseBytes, nil
 }
