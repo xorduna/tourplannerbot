@@ -586,6 +586,7 @@ func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, s
 	downloadedFileCount := 0
 	for iteration := 0; iteration < telegramHandler.toolCallMaxIterations; iteration++ {
 		generation, generationError := telegramHandler.responseGenerator.Generate(ctx, telegramHandler.systemInstructions, conversationMessages, toolDefinitions)
+		conversationMessages = clearTransientFileInputs(conversationMessages)
 		if loggingError := telegramHandler.saveLLMRequest(ctx, sourceMessageID, chatID, messageThreadID, userID, generation, generationError); loggingError != nil {
 			telegramHandler.logger.Error("failed to save LLM request audit record",
 				"chat_id", chatID,
@@ -702,6 +703,16 @@ func (telegramHandler *Handler) generateResponseWithTools(ctx context.Context, s
 	}
 
 	return generatedResponse{}, fmt.Errorf("tool call loop exceeded %d iterations", telegramHandler.toolCallMaxIterations)
+}
+
+// clearTransientFileInputs removes locally staged PDFs after the one model
+// request that receives them. Keeping these file paths in later iterations
+// would make a trusted rename leave stale paths in the conversation history.
+func clearTransientFileInputs(conversationMessages []llm.Message) []llm.Message {
+	for messageIndex := range conversationMessages {
+		conversationMessages[messageIndex].FileInputs = nil
+	}
+	return conversationMessages
 }
 
 // encodeToolError returns a stable JSON result that the model can interpret.

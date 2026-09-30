@@ -285,6 +285,8 @@ func toolProgressText(toolName string, toolSource string) string {
 		return "📇 Consultant el deal a Bigin…"
 	case normalizedToolName == "get_bigin_deal_emails":
 		return "✉️ Consultant els emails del deal a Bigin…"
+	case normalizedToolName == "upload_bigin_deal_attachment":
+		return "📎 Pujant l’adjunt al deal de Bigin…"
 	case normalizedToolName == "search_bigin_contacts":
 		return "👤 Buscant contactes a Bigin…"
 	case normalizedToolName == "web_search":

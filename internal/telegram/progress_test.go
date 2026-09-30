@@ -80,6 +80,7 @@ func TestToolProgressText(t *testing.T) {
 		{name: "update draft", toolName: "update_draft", toolSource: "native", expectedText: "📝 Actualitzant la proposta…"},
 		{name: "Bigin deal", toolName: "get_bigin_deal", toolSource: "bigin", expectedText: "📇 Consultant el deal a Bigin…"},
 		{name: "Bigin deal emails", toolName: "get_bigin_deal_emails", toolSource: "bigin", expectedText: "✉️ Consultant els emails del deal a Bigin…"},
+		{name: "Bigin attachment", toolName: "upload_bigin_deal_attachment", toolSource: "bigin", expectedText: "📎 Pujant l’adjunt al deal de Bigin…"},
 		{name: "Bigin contacts", toolName: "search_bigin_contacts", toolSource: "bigin", expectedText: "👤 Buscant contactes a Bigin…"},
 		{name: "Gmail draft", toolName: "create_gmail_draft", toolSource: "gmail", expectedText: "✉️ Creant l’esborrany a Gmail…"},
 		{name: "Gmail draft update", toolName: "update_gmail_draft", toolSource: "gmail", expectedText: "✉️ Actualitzant l’esborrany a Gmail…"},

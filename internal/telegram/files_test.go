@@ -108,3 +108,17 @@ func TestModelPDFInputsSelectsBoundedPDFs(t *testing.T) {
 		t.Errorf("model PDF inputs = %#v", fileInputs)
 	}
 }
+
+func TestClearTransientFileInputsRemovesLocalFilePaths(t *testing.T) {
+	clearedMessages := clearTransientFileInputs([]llm.Message{{
+		Role: "user",
+		FileInputs: []llm.FileInput{{
+			Path:     "/tmp/original.pdf",
+			Filename: "original.pdf",
+			MIMEType: "application/pdf",
+		}},
+	}})
+	if len(clearedMessages[0].FileInputs) != 0 {
+		t.Errorf("file inputs = %#v, want none", clearedMessages[0].FileInputs)
+	}
+}

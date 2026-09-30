@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -82,7 +84,7 @@ func NewClient(configuration Config) (*Client, error) {
 
 // get performs one authenticated GET request.
 func (client *Client) get(ctx context.Context, apiPath string) ([]byte, error) {
-	return client.do(ctx, http.MethodGet, apiPath, nil)
+	return client.do(ctx, http.MethodGet, apiPath, nil, "")
 }
 
 // postJSON performs one authenticated POST request with a JSON body.
@@ -91,7 +93,7 @@ func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody 
 	if err != nil {
 		return nil, fmt.Errorf("encode Bigin API request: %w", err)
 	}
-	return client.do(ctx, http.MethodPost, apiPath, encodedRequestBody)
+	return client.do(ctx, http.MethodPost, apiPath, encodedRequestBody, "application/json")
 }
 
 // putJSON performs one authenticated PUT request with a JSON body.
@@ -100,12 +102,36 @@ func (client *Client) putJSON(ctx context.Context, apiPath string, requestBody a
 	if err != nil {
 		return nil, fmt.Errorf("encode Bigin API request: %w", err)
 	}
-	return client.do(ctx, http.MethodPut, apiPath, encodedRequestBody)
+	return client.do(ctx, http.MethodPut, apiPath, encodedRequestBody, "application/json")
+}
+
+// postMultipartFile uploads a trusted local file under Bigin's required
+// multipart field name. Callers validate the file before invoking this method.
+func (client *Client) postMultipartFile(ctx context.Context, apiPath string, filePath string, filename string) ([]byte, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("open attachment: %w", err)
+	}
+	defer file.Close()
+
+	var requestBody bytes.Buffer
+	multipartWriter := multipart.NewWriter(&requestBody)
+	filePart, err := multipartWriter.CreateFormFile("file", filename)
+	if err != nil {
+		return nil, fmt.Errorf("create Bigin attachment form: %w", err)
+	}
+	if _, err := io.Copy(filePart, file); err != nil {
+		return nil, fmt.Errorf("copy Bigin attachment: %w", err)
+	}
+	if err := multipartWriter.Close(); err != nil {
+		return nil, fmt.Errorf("finish Bigin attachment form: %w", err)
+	}
+	return client.do(ctx, http.MethodPost, apiPath, requestBody.Bytes(), multipartWriter.FormDataContentType())
 }
 
 // do performs an authenticated Bigin request. An unauthorized response
 // invalidates the cached token and is retried once with a newly refreshed one.
-func (client *Client) do(ctx context.Context, method string, apiPath string, requestBody []byte) ([]byte, error) {
+func (client *Client) do(ctx context.Context, method string, apiPath string, requestBody []byte, contentType string) ([]byte, error) {
 	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
 		accessToken, err := client.validAccessToken(ctx)
 		if err != nil {
@@ -118,8 +144,8 @@ func (client *Client) do(ctx context.Context, method string, apiPath string, req
 		}
 		request.Header.Set("Authorization", "Zoho-oauthtoken "+accessToken)
 		request.Header.Set("Accept", "application/json")
-		if requestBody != nil {
-			request.Header.Set("Content-Type", "application/json")
+		if requestBody != nil && contentType != "" {
+			request.Header.Set("Content-Type", contentType)
 		}
 
 		response, err := client.httpClient.Do(request)

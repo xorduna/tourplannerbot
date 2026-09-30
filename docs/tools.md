@@ -12,6 +12,7 @@ methods:
   - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.GetDealEmailsTool.Execute: Retrieves the email related-list data for a deal.
+  - bigin.UploadDealAttachmentTool.Execute: Uploads a queued temporary file as an attachment on a Bigin deal.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
@@ -40,9 +41,11 @@ depends_on:
   - internal/tools/randomnumber/random_number.go
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
+  - internal/tools/bigin/get_deal_emails.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/bigin/update_deal.go
+  - internal/tools/bigin/upload_deal_attachment.go
   - internal/tools/filesystem/filesystem.go
   - internal/tools/monei/client.go
   - internal/tools/monei/payment.go
@@ -129,6 +132,14 @@ list at `GET /bigin/v2/Pipelines/{record_id}/Emails` when `message_id` is
 `null`. Providing a message ID from that list retrieves the individual email,
 including its `content` body, through the corresponding detail endpoint. It is
 read-only and returns Bigin's unchanged response.
+
+`upload_bigin_deal_attachment(deal_id, filename)` uploads one file already
+queued earlier in the same response to `POST /bigin/v2/Pipelines/{record_id}/Attachments`
+as `multipart/form-data`. The filename must exactly match a file returned by
+`download_gmail_attachments` in that same response cycle; paths cannot be
+provided by the model. The tool accepts regular files in the bot's dedicated
+`./tmp` workspace only, rejects `.exe` files, and enforces Bigin's 20 MB
+per-file limit.
 
 `search_bigin_contacts(search_by, query)` retrieves contacts with the complete
 standard and custom field envelope returned by Bigin. `search_by=id` performs a
