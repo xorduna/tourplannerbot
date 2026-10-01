@@ -37,8 +37,9 @@ type allowedUserAuthorizerFunc func(applicationContext context.Context, telegram
 type draftReaderFunc func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
 
 type draftStoreStub struct {
-	findDraft   func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
-	updateDraft func(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error)
+	findDraft          func(applicationContext context.Context, draftID string, telegramUserID int64) (*models.Draft, error)
+	updateDraft        func(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error)
+	updateDraftPreview func(applicationContext context.Context, draft *models.Draft) error
 }
 
 // Check calls the function supplied by the test.
@@ -69,6 +70,14 @@ func (draftStore draftStoreStub) FindAuthorizedDraft(applicationContext context.
 // UpdateAuthorizedDraft calls the draft-store function supplied by the test.
 func (draftStore draftStoreStub) UpdateAuthorizedDraft(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error) {
 	return draftStore.updateDraft(applicationContext, updateDraftInput)
+}
+
+// UpdateDraftPreview calls the preview updater supplied by the test.
+func (draftStore draftStoreStub) UpdateDraftPreview(applicationContext context.Context, draft *models.Draft) error {
+	if draftStore.updateDraftPreview == nil {
+		return nil
+	}
+	return draftStore.updateDraftPreview(applicationContext, draft)
 }
 
 // newTestServer creates an Echo server without writing request logs in test output.
@@ -311,6 +320,7 @@ func TestDraftAPIUpdatesValidatedContentAndReturnsRevisionConflict(t *testing.T)
 	}))
 	draftID := "0193a67a-4ae4-4e2c-9e94-537889065d11"
 	updatedInput := database.UpdateDraftInput{}
+	updatedPreview := (*models.Draft)(nil)
 	server := NewServer(slog.New(slog.NewTextHandler(io.Discard, nil)), readinessCheckerFunc(func(applicationContext context.Context) error { return nil }), testBuildInformation, sessionAuthenticator, draftStoreStub{
 		findDraft: func(applicationContext context.Context, requestedDraftID string, telegramUserID int64) (*models.Draft, error) {
 			return nil, database.ErrDraftNotFound
@@ -318,9 +328,14 @@ func TestDraftAPIUpdatesValidatedContentAndReturnsRevisionConflict(t *testing.T)
 		updateDraft: func(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error) {
 			updatedInput = updateDraftInput
 			if updateDraftInput.ExpectedRevision == 1 {
-				return &models.Draft{ID: draftID, Kind: models.DraftKindGeneric, ContentJSON: updateDraftInput.ContentJSON, BodyText: updateDraftInput.BodyText, Revision: 2}, nil
+				telegramMessageID := int64(77)
+				return &models.Draft{ID: draftID, ChatID: 123, TelegramMessageID: &telegramMessageID, Kind: models.DraftKindGeneric, ContentJSON: updateDraftInput.ContentJSON, BodyText: updateDraftInput.BodyText, Revision: 2}, nil
 			}
 			return nil, &database.DraftRevisionConflictError{CurrentDraft: &models.Draft{ID: draftID, Kind: models.DraftKindGeneric, ContentJSON: json.RawMessage(`{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Newer text"}]}]}`), BodyText: "Newer text", Revision: 3}}
+		},
+		updateDraftPreview: func(applicationContext context.Context, draft *models.Draft) error {
+			updatedPreview = draft
+			return nil
 		},
 	})
 	cookieRecorder := httptest.NewRecorder()
@@ -338,6 +353,9 @@ func TestDraftAPIUpdatesValidatedContentAndReturnsRevisionConflict(t *testing.T)
 	}
 	if updatedInput.BodyText != "Updated text" || updatedInput.ExpectedRevision != 1 || updatedInput.OwnerTelegramID != 42 {
 		t.Errorf("UpdateAuthorizedDraft input = %#v, want server-projected text and authenticated owner", updatedInput)
+	}
+	if updatedPreview == nil || updatedPreview.ID != draftID || updatedPreview.TelegramMessageID == nil || *updatedPreview.TelegramMessageID != 77 {
+		t.Errorf("UpdateDraftPreview draft = %#v, want the saved Telegram preview", updatedPreview)
 	}
 	if !strings.Contains(responseRecorder.Body.String(), `"revision":2`) {
 		t.Errorf("PATCH draft response = %q, want revision two", responseRecorder.Body.String())

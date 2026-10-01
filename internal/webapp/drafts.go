@@ -32,11 +32,19 @@ type DraftStore interface {
 	UpdateAuthorizedDraft(applicationContext context.Context, updateDraftInput database.UpdateDraftInput) (*models.Draft, error)
 }
 
+// DraftPreviewUpdater refreshes the Telegram message that presents a draft.
+// Implementations should leave a draft without a TelegramMessageID untouched.
+type DraftPreviewUpdater interface {
+	UpdateDraftPreview(applicationContext context.Context, draft *models.Draft) error
+}
+
 // GORMDraftReader provides the Mini App with a database-backed draft reader.
 // Its connection is set after the startup retry loop succeeds.
 type GORMDraftReader struct {
-	databaseConnectionMutex sync.RWMutex
-	databaseConnection      *gorm.DB
+	databaseConnectionMutex  sync.RWMutex
+	databaseConnection       *gorm.DB
+	draftPreviewUpdaterMutex sync.RWMutex
+	draftPreviewUpdater      DraftPreviewUpdater
 }
 
 // NewGORMDraftReader creates a draft reader without a database connection.
@@ -49,6 +57,30 @@ func (draftReader *GORMDraftReader) SetDatabaseConnection(databaseConnection *go
 	draftReader.databaseConnectionMutex.Lock()
 	defer draftReader.databaseConnectionMutex.Unlock()
 	draftReader.databaseConnection = databaseConnection
+}
+
+// SetDraftPreviewUpdater makes Telegram preview synchronization available once
+// the bot has started. It is intentionally optional so Mini App draft storage
+// remains usable before Telegram is connected.
+func (draftReader *GORMDraftReader) SetDraftPreviewUpdater(draftPreviewUpdater DraftPreviewUpdater) {
+	draftReader.draftPreviewUpdaterMutex.Lock()
+	defer draftReader.draftPreviewUpdaterMutex.Unlock()
+	draftReader.draftPreviewUpdater = draftPreviewUpdater
+}
+
+// UpdateDraftPreview refreshes the Telegram preview for a saved draft when a
+// Telegram updater is available.
+func (draftReader *GORMDraftReader) UpdateDraftPreview(applicationContext context.Context, draft *models.Draft) error {
+	if draft.TelegramMessageID == nil {
+		return nil
+	}
+	draftReader.draftPreviewUpdaterMutex.RLock()
+	draftPreviewUpdater := draftReader.draftPreviewUpdater
+	draftReader.draftPreviewUpdaterMutex.RUnlock()
+	if draftPreviewUpdater == nil {
+		return nil
+	}
+	return draftPreviewUpdater.UpdateDraftPreview(applicationContext, draft)
 }
 
 // FindAuthorizedDraft returns a draft only when it is owned by telegramUserID.
@@ -191,6 +223,11 @@ func handlePatchDraft(sessionAuthenticator *SessionAuthenticator, draftStore Dra
 	}
 	if err != nil {
 		return fmt.Errorf("update authorized draft: %w", err)
+	}
+	if draftPreviewUpdater, ok := draftStore.(DraftPreviewUpdater); ok {
+		if err := draftPreviewUpdater.UpdateDraftPreview(echoContext.Request().Context(), updatedDraft); err != nil {
+			echoContext.Logger().Warn("failed to update Telegram draft preview", "draft_id", updatedDraft.ID, "telegram_message_id", updatedDraft.TelegramMessageID, "error", err)
+		}
 	}
 	return echoContext.JSON(http.StatusOK, newDraftResponse(updatedDraft))
 }

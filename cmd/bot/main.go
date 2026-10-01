@@ -539,6 +539,7 @@ func run() error {
 		logger.Error("failed to create telegram bot", "error", err)
 		return fmt.Errorf("create Telegram bot: %w", err)
 	}
+	draftReader.SetDraftPreviewUpdater(telegram.NewDraftPreviewUpdater(telegramBot, messageHandler))
 	dealTopicService.SetTelegramForumTopicCreator(telegramBot)
 
 	botInfo, err := telegramBot.GetMe(applicationContext)

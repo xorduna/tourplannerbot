@@ -53,6 +53,9 @@ func (client *recordingTelegramHTTPClient) Do(request *http.Request) (*http.Resp
 	if methodName == "sendMessage" || methodName == "editMessageText" {
 		responseBody = `{"ok":true,"result":{"message_id":77,"date":1,"chat":{"id":123,"type":"private"},"text":"ok"}}`
 	}
+	if methodName == "getChat" {
+		responseBody = `{"ok":true,"result":{"id":123,"type":"private"}}`
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       io.NopCloser(strings.NewReader(responseBody)),

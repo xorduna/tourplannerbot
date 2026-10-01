@@ -83,6 +83,7 @@ function App() {
   const [isSaving, setIsSaving] = createSignal(false);
   const [saveError, setSaveError] = createSignal<string>();
   const [hasSaved, setHasSaved] = createSignal(false);
+  const [copyStatus, setCopyStatus] = createSignal<string>();
   let editor: Editor | undefined;
 
   createEffect(() => {
@@ -98,6 +99,7 @@ function App() {
         setIsDirty(true);
         setHasSaved(false);
         setSaveError(undefined);
+        setCopyStatus(undefined);
       },
     });
     editor = editableEditor;
@@ -183,6 +185,7 @@ function App() {
     setDraftSubject(loadedDraft.subject ?? "");
     setIsDirty(false);
     setHasSaved(false);
+    setCopyStatus(undefined);
   }
 
   async function saveDraft(): Promise<void> {
@@ -226,6 +229,37 @@ function App() {
     setIsDirty(true);
     setHasSaved(false);
     setSaveError(undefined);
+    setCopyStatus(undefined);
+  }
+
+  async function copyDraftText(): Promise<void> {
+    if (!editor) return;
+
+    const text = editor.getText({ blockSeparator: "\n\n" }).trim();
+    if (!text) {
+      setCopyStatus("There is no text to copy.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.setAttribute("readonly", "");
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        document.body.append(textArea);
+        textArea.select();
+        const copied = document.execCommand("copy");
+        textArea.remove();
+        if (!copied) throw new Error("Clipboard access was denied.");
+      }
+      setCopyStatus("Copied to clipboard.");
+    } catch {
+      setCopyStatus("Could not copy the text. Please try again.");
+    }
   }
 
   const identityLabel = () => {
@@ -267,6 +301,7 @@ function App() {
                 <button type="button" title="Bulleted list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>• List</button>
                 <button type="button" title="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1. List</button>
                 <span class="toolbar-spacer" />
+                <button type="button" title="Copy all text" aria-label="Copy all text" onClick={() => void copyDraftText()}>📋</button>
                 <button type="button" title="Undo" aria-label="Undo" onClick={() => editor?.chain().focus().undo().run()}>↶</button>
                 <button type="button" title="Redo" aria-label="Redo" onClick={() => editor?.chain().focus().redo().run()}>↷</button>
                 <button class="toolbar-save-button" type="button" title="Save" aria-label="Save" disabled={!isDirty() || isSaving()} onClick={() => void saveDraft()}>
@@ -287,9 +322,10 @@ function App() {
           {draftError()}
           {authenticationError()}
           {saveError()}
-          {authenticatedUser() && draft() && !draftError() && !authenticationError() && !saveError() && !isSaving() && !hasSaved() && (isDirty() ? "Unsaved changes" : `Authenticated as ${identityLabel()} · Revision ${draft()!.revision}`)}
+          {authenticatedUser() && draft() && !draftError() && !authenticationError() && !saveError() && !copyStatus() && !isSaving() && !hasSaved() && (isDirty() ? "Unsaved changes" : `Authenticated as ${identityLabel()} · Revision ${draft()!.revision}`)}
           {isSaving() && "Saving changes…"}
-          {hasSaved() && "Saved"}
+          {hasSaved() && !copyStatus() && "Saved"}
+          {copyStatus()}
         </span>
       </footer>
     </main>
