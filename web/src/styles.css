@@ -147,6 +147,36 @@ h1 {
   content: "·";
 }
 
+.draft-actions {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.draft-actions button {
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 5px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--telegram-button-color) 12%, transparent);
+  color: var(--telegram-text-color);
+}
+
+.copy-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .subject-field {
   display: flex;
   gap: 10px;
@@ -218,6 +248,30 @@ h1 {
   font-size: 0.95rem !important;
 }
 
+.toolbar-gmail-button {
+	padding: 6px !important;
+	background: #fff !important;
+	border: 1px solid color-mix(in srgb, var(--telegram-text-color) 16%, transparent) !important;
+}
+
+.draft-actions .toolbar-gmail-button {
+  width: 34px;
+  min-width: 34px !important;
+  height: 30px;
+  padding: 5px !important;
+}
+
+.draft-actions .toolbar-save-button {
+  background: var(--telegram-button-color);
+  color: var(--telegram-button-text-color, #fff);
+}
+
+.gmail-icon {
+	display: block;
+	width: 22px;
+	height: 17px;
+}
+
 .editor-toolbar button:disabled,
 .toolbar-save-button:disabled {
   cursor: default;
@@ -249,4 +303,152 @@ h1 {
 
 .tiptap-editor p:last-child {
   margin-bottom: 0;
+}
+
+.gmail-dialog-backdrop {
+  position: fixed;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  align-items: end;
+  background: color-mix(in srgb, #000 34%, transparent);
+}
+
+.gmail-dialog {
+  width: 100%;
+  max-height: min(82vh, 620px);
+  overflow-y: auto;
+  padding: 20px max(16px, var(--telegram-safe-area-right)) max(20px, var(--telegram-safe-area-bottom)) max(16px, var(--telegram-safe-area-left));
+  border-radius: 18px 18px 0 0;
+  background: var(--telegram-bg-color);
+  color: var(--telegram-text-color);
+}
+
+.gmail-dialog h2 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+}
+
+.gmail-mode-choice,
+.gmail-candidates {
+  display: grid;
+  gap: 9px;
+}
+
+.gmail-mode-choice label,
+.gmail-candidate {
+  display: flex;
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--telegram-text-color) 14%, transparent);
+  border-radius: 10px;
+  font-size: .88rem;
+}
+
+.gmail-mode-choice input,
+.gmail-candidate input {
+  margin-top: 3px;
+  accent-color: var(--telegram-button-color);
+}
+
+.gmail-recipient-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  color: var(--telegram-hint-color);
+  font-size: .78rem;
+  font-weight: 650;
+}
+
+.gmail-options-loading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 14px 0 0;
+  color: var(--telegram-hint-color);
+  font-size: .8rem;
+}
+
+.gmail-options-loading span {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, var(--telegram-button-color) 25%, transparent);
+  border-top-color: var(--telegram-button-color);
+  border-radius: 50%;
+  animation: gmail-options-spin .8s linear infinite;
+}
+
+@keyframes gmail-options-spin {
+  to { transform: rotate(360deg); }
+}
+
+.gmail-recipient-field input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--telegram-text-color) 18%, transparent);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+}
+
+.gmail-candidates {
+  margin-top: 14px;
+}
+
+.gmail-candidate.selected {
+  border-color: var(--telegram-button-color);
+  background: color-mix(in srgb, var(--telegram-button-color) 10%, transparent);
+}
+
+.gmail-candidate span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.gmail-candidate small,
+.gmail-candidate em,
+.gmail-dialog-note {
+  color: var(--telegram-hint-color);
+  font-size: .74rem;
+  font-style: normal;
+}
+
+.gmail-candidate em {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.gmail-dialog-error {
+  margin: 12px 0 0;
+  color: #b91c1c;
+  font-size: .82rem;
+}
+
+.gmail-dialog-note {
+  margin: 16px 0;
+  line-height: 1.4;
+}
+
+.gmail-dialog-actions {
+  display: flex;
+  justify-content: end;
+  gap: 8px;
+}
+
+.gmail-dialog-actions button {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--telegram-button-color) 12%, transparent);
+  color: var(--telegram-text-color);
+}
+
+.gmail-dialog-actions .gmail-create-button {
+  background: var(--telegram-button-color);
+  color: var(--telegram-button-text-color, #fff);
+  font-weight: 700;
 }

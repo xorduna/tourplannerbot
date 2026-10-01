@@ -117,6 +117,12 @@ func (createDraftTool *CreateDraftTool) Execute(ctx context.Context, rawArgument
 // buildDraftRequest validates a complete message and wraps its base64url MIME
 // representation in the Gmail Draft resource request shape.
 func buildDraftRequest(to []string, carbonCopies []string, blindCarbonCopies []string, subject string, body string) (any, error) {
+	return buildDraftRequestWithReply(to, carbonCopies, blindCarbonCopies, subject, body, "", "", "")
+}
+
+// buildDraftRequestWithReply adds Gmail's thread resource and the RFC 2822
+// reply headers when this message belongs to an existing conversation.
+func buildDraftRequestWithReply(to []string, carbonCopies []string, blindCarbonCopies []string, subject string, body string, threadID string, inReplyTo string, references string) (any, error) {
 	toRecipients, err := normalizeRecipients(to, "to")
 	if err != nil {
 		return nil, err
@@ -151,13 +157,21 @@ func buildDraftRequest(to []string, carbonCopies []string, blindCarbonCopies []s
 		return nil, fmt.Errorf("body must not exceed %d bytes", maximumBodyBytes)
 	}
 
-	rawMessage := buildPlainTextMessage(toRecipients, carbonCopyRecipients, blindCarbonCopyRecipients, subject, body)
+	if threadID != "" && !gmailDraftIDPattern.MatchString(threadID) {
+		return nil, fmt.Errorf("thread_id is invalid")
+	}
+	if (inReplyTo == "") != (references == "") || (inReplyTo != "" && (!validReplyHeader(inReplyTo) || !validReplyHeader(references))) {
+		return nil, fmt.Errorf("reply headers are invalid")
+	}
+	rawMessage := buildPlainTextMessageWithReply(toRecipients, carbonCopyRecipients, blindCarbonCopyRecipients, subject, body, inReplyTo, references)
 	requestBody := struct {
 		Message struct {
-			Raw string `json:"raw"`
+			Raw      string `json:"raw"`
+			ThreadID string `json:"threadId,omitempty"`
 		} `json:"message"`
 	}{}
 	requestBody.Message.Raw = base64.RawURLEncoding.EncodeToString(rawMessage)
+	requestBody.Message.ThreadID = threadID
 	return requestBody, nil
 }
 
@@ -220,6 +234,10 @@ func normalizeRecipients(rawRecipients []string, fieldName string) ([]string, er
 // buildPlainTextMessage returns a CRLF-normalized MIME message suitable for
 // Gmail's message.raw field.
 func buildPlainTextMessage(toRecipients []string, carbonCopyRecipients []string, blindCarbonCopyRecipients []string, subject string, body string) []byte {
+	return buildPlainTextMessageWithReply(toRecipients, carbonCopyRecipients, blindCarbonCopyRecipients, subject, body, "", "")
+}
+
+func buildPlainTextMessageWithReply(toRecipients []string, carbonCopyRecipients []string, blindCarbonCopyRecipients []string, subject string, body string, inReplyTo string, references string) []byte {
 	var messageBuilder strings.Builder
 	messageBuilder.WriteString("To: ")
 	messageBuilder.WriteString(strings.Join(toRecipients, ", "))
@@ -237,6 +255,13 @@ func buildPlainTextMessage(toRecipients []string, carbonCopyRecipients []string,
 	messageBuilder.WriteString("Subject: ")
 	messageBuilder.WriteString(mime.QEncoding.Encode("UTF-8", subject))
 	messageBuilder.WriteString("\r\n")
+	if inReplyTo != "" {
+		messageBuilder.WriteString("In-Reply-To: ")
+		messageBuilder.WriteString(inReplyTo)
+		messageBuilder.WriteString("\r\nReferences: ")
+		messageBuilder.WriteString(references)
+		messageBuilder.WriteString("\r\n")
+	}
 	messageBuilder.WriteString("MIME-Version: 1.0\r\n")
 	messageBuilder.WriteString("Content-Type: text/plain; charset=UTF-8\r\n")
 	messageBuilder.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")

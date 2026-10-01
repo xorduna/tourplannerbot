@@ -68,6 +68,21 @@ func (client *Client) GetDeal(applicationContext context.Context, dealID string)
 	return json.RawMessage(responseBody), nil
 }
 
+// GetContact retrieves a complete Bigin contact record by its numeric ID.
+// It is used by the Mini App to resolve the contact that owns a deal before
+// searching that contact's Gmail conversations.
+func (client *Client) GetContact(applicationContext context.Context, rawContactID string) (json.RawMessage, error) {
+	contactID := strings.TrimSpace(rawContactID)
+	if !biginRecordIDPattern.MatchString(contactID) {
+		return nil, fmt.Errorf("contact_id must contain only digits")
+	}
+	responseBody, err := client.get(applicationContext, "/bigin/v2/Contacts/"+contactID)
+	if err != nil {
+		return nil, fmt.Errorf("retrieve Bigin contact: %w", err)
+	}
+	return json.RawMessage(responseBody), nil
+}
+
 // Definition describes the get_bigin_deal function to the LLM.
 func (getDealTool *GetDealTool) Definition() tools.Definition {
 	return tools.Definition{

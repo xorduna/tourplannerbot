@@ -26,6 +26,21 @@ interface Draft {
   updated_at: string;
 }
 
+interface GmailReplyCandidate {
+  message_id: string;
+  subject?: string;
+  from?: string;
+  to?: string;
+  date?: string;
+  snippet?: string;
+}
+
+interface GmailOptions {
+  reply_available: boolean;
+  recipient?: string;
+  candidates: GmailReplyCandidate[];
+}
+
 function draftReferenceFromLaunch(): string | null {
   const launchParameters = new URLSearchParams(window.location.search);
   const directReference = launchParameters.get("draft");
@@ -84,6 +99,15 @@ function App() {
   const [saveError, setSaveError] = createSignal<string>();
   const [hasSaved, setHasSaved] = createSignal(false);
   const [copyStatus, setCopyStatus] = createSignal<string>();
+  const [gmailOptions, setGmailOptions] = createSignal<GmailOptions>();
+  const [isGmailDialogOpen, setIsGmailDialogOpen] = createSignal(false);
+  const [isLoadingGmailOptions, setIsLoadingGmailOptions] = createSignal(false);
+  const [gmailMode, setGmailMode] = createSignal<"new" | "reply">("new");
+  const [gmailRecipient, setGmailRecipient] = createSignal("");
+  const [replyMessageID, setReplyMessageID] = createSignal<string>();
+  const [gmailError, setGmailError] = createSignal<string>();
+  const [isCreatingGmailDraft, setIsCreatingGmailDraft] = createSignal(false);
+  const [gmailDraftCreated, setGmailDraftCreated] = createSignal(false);
   let editor: Editor | undefined;
 
   createEffect(() => {
@@ -262,6 +286,70 @@ function App() {
     }
   }
 
+  async function openGmailDialog(): Promise<void> {
+    const currentDraft = draft();
+    if (!currentDraft || isDirty()) return;
+
+    setGmailError(undefined);
+    setGmailDraftCreated(false);
+    setGmailOptions(undefined);
+    setGmailMode("new");
+    setReplyMessageID(undefined);
+    setIsGmailDialogOpen(true);
+    setIsLoadingGmailOptions(true);
+    try {
+      const response = await fetch(`/api/drafts/${encodeURIComponent(currentDraft.id)}/gmail-options`, { credentials: "same-origin" });
+      if (!response.ok) throw new Error("No s’han pogut carregar les opcions de Gmail.");
+      const options = (await response.json()) as GmailOptions;
+      setGmailOptions(options);
+      setGmailRecipient(options.recipient ?? "");
+      setReplyMessageID(options.candidates[0]?.message_id);
+    } catch (error: unknown) {
+      setGmailError(error instanceof Error ? error.message : "No s’han pogut carregar les opcions de Gmail.");
+    } finally {
+      setIsLoadingGmailOptions(false);
+    }
+  }
+
+  async function createGmailDraft(): Promise<void> {
+    const currentDraft = draft();
+    if (!currentDraft || isCreatingGmailDraft()) return;
+    const mode = gmailMode();
+    if (mode === "new" && !gmailRecipient().trim()) {
+      setGmailError("Indica el destinatari.");
+      return;
+    }
+    if (mode === "reply" && !replyMessageID()) {
+      setGmailError("Selecciona una conversa del deal.");
+      return;
+    }
+
+    setIsCreatingGmailDraft(true);
+    setGmailError(undefined);
+    try {
+      const response = await fetch(`/api/drafts/${encodeURIComponent(currentDraft.id)}/gmail-draft`, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          to: gmailRecipient().trim(),
+          message_id: mode === "reply" ? replyMessageID() : "",
+        }),
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => undefined)) as { error?: string } | undefined;
+        throw new Error(payload?.error ?? "Gmail no ha pogut crear l’esborrany.");
+      }
+      setIsGmailDialogOpen(false);
+      setGmailDraftCreated(true);
+    } catch (error: unknown) {
+      setGmailError(error instanceof Error ? error.message : "Gmail no ha pogut crear l’esborrany.");
+    } finally {
+      setIsCreatingGmailDraft(false);
+    }
+  }
+
   const identityLabel = () => {
     const user = authenticatedUser();
     if (!user) return "";
@@ -280,10 +368,30 @@ function App() {
             </h1>
             <Show when={draft()}>
               {(loadedDraft) => (
-                <div class="draft-meta">
-                  <span>{loadedDraft().kind}</span>
-                  <span>Revision {loadedDraft().revision}</span>
-                </div>
+                <>
+                  <div class="draft-meta">
+                    <span>{loadedDraft().kind}</span>
+                    <span>Revision {loadedDraft().revision}</span>
+                  </div>
+                  <div class="draft-actions" aria-label="Draft actions">
+                    <button type="button" title="Copy all text" aria-label="Copy all text" onClick={() => void copyDraftText()}>
+                      <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7.5A2.5 2.5 0 0 1 11.5 5h6A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-6A2.5 2.5 0 0 1 9 16.5v-9Z" /><path d="M15 5V4.5A2.5 2.5 0 0 0 12.5 2h-6A2.5 2.5 0 0 0 4 4.5v9A2.5 2.5 0 0 0 6.5 16H9" /></svg>
+                    </button>
+                    <Show when={loadedDraft().kind === "email"}>
+                      <button type="button" class="toolbar-gmail-button" aria-label="Passa a Gmail" title={isDirty() ? "Desa els canvis abans de passar-lo a Gmail" : "Passa a Gmail"} disabled={isDirty()} onClick={() => void openGmailDialog()}>
+                        <svg class="gmail-icon" viewBox="0 0 24 18" aria-hidden="true">
+                          <path fill="#EA4335" d="M1 3.5 12 11l11-7.5V16a2 2 0 0 1-2 2h-2V8.7l-7 4.8-7-4.8V18H3a2 2 0 0 1-2-2V3.5Z" />
+                          <path fill="#34A853" d="M5 8.7 12 13.5l7-4.8V18H5V8.7Z" />
+                          <path fill="#4285F4" d="M1 3.5 5 6.2V18H3a2 2 0 0 1-2-2V3.5Z" />
+                          <path fill="#FBBC04" d="M23 3.5 19 6.2V18h2a2 2 0 0 0 2-2V3.5Z" />
+                        </svg>
+                      </button>
+                    </Show>
+                    <button class="toolbar-save-button" type="button" title="Save" aria-label="Save" disabled={!isDirty() || isSaving()} onClick={() => void saveDraft()}>
+                      {isSaving() ? "…" : "💾"}
+                    </button>
+                  </div>
+                </>
               )}
             </Show>
           </div>
@@ -301,19 +409,55 @@ function App() {
                 <button type="button" title="Bulleted list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>• List</button>
                 <button type="button" title="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1. List</button>
                 <span class="toolbar-spacer" />
-                <button type="button" title="Copy all text" aria-label="Copy all text" onClick={() => void copyDraftText()}>📋</button>
                 <button type="button" title="Undo" aria-label="Undo" onClick={() => editor?.chain().focus().undo().run()}>↶</button>
                 <button type="button" title="Redo" aria-label="Redo" onClick={() => editor?.chain().focus().redo().run()}>↷</button>
-                <button class="toolbar-save-button" type="button" title="Save" aria-label="Save" disabled={!isDirty() || isSaving()} onClick={() => void saveDraft()}>
-                  {isSaving() ? "…" : "💾"}
-                </button>
               </div>
               <div class="tiptap-editor" ref={setEditorElement} />
             </article>
           )}
         </Show>
+
+        <Show when={isGmailDialogOpen()}>
+          <div class="gmail-dialog-backdrop" role="presentation" onClick={() => !isCreatingGmailDraft() && setIsGmailDialogOpen(false)}>
+            <section class="gmail-dialog" role="dialog" aria-modal="true" aria-labelledby="gmail-dialog-title" onClick={(event) => event.stopPropagation()}>
+              <h2 id="gmail-dialog-title">Passa l’esborrany a Gmail</h2>
+              <div class="gmail-mode-choice">
+                <label><input type="radio" name="gmail-mode" checked={gmailMode() === "new"} onChange={() => setGmailMode("new")} /> Nou correu</label>
+                <Show when={gmailOptions()?.reply_available}>
+                  <label><input type="radio" name="gmail-mode" checked={gmailMode() === "reply"} onChange={() => setGmailMode("reply")} /> Resposta a una conversa amb el contacte</label>
+                </Show>
+              </div>
+              <Show when={isLoadingGmailOptions()}>
+                <p class="gmail-options-loading" role="status" aria-live="polite"><span aria-hidden="true" /> Buscant converses amb aquest contacte…</p>
+              </Show>
+              <Show when={gmailMode() === "new"}>
+                <label class="gmail-recipient-field" for="gmail-recipient">Destinatari
+                  <input id="gmail-recipient" type="email" value={gmailRecipient()} placeholder="client@example.com" onInput={(event) => setGmailRecipient(event.currentTarget.value)} />
+                </label>
+              </Show>
+              <Show when={gmailMode() === "reply"}>
+                <div class="gmail-candidates" aria-label="Converses amb el contacte">
+                  <Show when={gmailOptions()?.candidates.length} fallback={<p>No hi ha converses amb aquest contacte disponibles per respondre.</p>}>
+                    {gmailOptions()!.candidates.map((candidate) => (
+                      <label class="gmail-candidate" classList={{ selected: replyMessageID() === candidate.message_id }}>
+                        <input type="radio" name="reply-message" checked={replyMessageID() === candidate.message_id} onChange={() => setReplyMessageID(candidate.message_id)} />
+                        <span><strong>{candidate.subject || "Sense assumpte"}</strong><small>{candidate.from || candidate.to || "Contacte"}{candidate.date ? ` · ${candidate.date}` : ""}</small><Show when={candidate.snippet}><em>{candidate.snippet}</em></Show></span>
+                      </label>
+                    ))}
+                  </Show>
+                </div>
+              </Show>
+              <Show when={gmailError()}><p class="gmail-dialog-error">{gmailError()}</p></Show>
+              <p class="gmail-dialog-note">Es crearà un draft a Gmail. Els canvis posteriors a Gmail no se sincronitzaran amb el bot.</p>
+              <div class="gmail-dialog-actions">
+                <button type="button" onClick={() => setIsGmailDialogOpen(false)} disabled={isCreatingGmailDraft()}>Cancel·la</button>
+                <button type="button" class="gmail-create-button" onClick={() => void createGmailDraft()} disabled={isCreatingGmailDraft()}>{isCreatingGmailDraft() ? "Creant…" : "Crear a Gmail"}</button>
+              </div>
+            </section>
+          </div>
+        </Show>
       </section>
-      <footer class="status" classList={{ development: !isInsideTelegram, error: Boolean(authenticationError() || draftError() || saveError()) }}>
+      <footer class="status" classList={{ development: !isInsideTelegram, error: Boolean(authenticationError() || draftError() || saveError() || gmailError()) }}>
         <span class="status-dot" aria-hidden="true" />
         <span>
           {!isInsideTelegram && "Development mode — opened outside Telegram"}
@@ -322,7 +466,8 @@ function App() {
           {draftError()}
           {authenticationError()}
           {saveError()}
-          {authenticatedUser() && draft() && !draftError() && !authenticationError() && !saveError() && !copyStatus() && !isSaving() && !hasSaved() && (isDirty() ? "Unsaved changes" : `Authenticated as ${identityLabel()} · Revision ${draft()!.revision}`)}
+          {gmailDraftCreated() && "Esborrany creat a Gmail"}
+          {authenticatedUser() && draft() && !draftError() && !authenticationError() && !saveError() && !gmailError() && !gmailDraftCreated() && !copyStatus() && !isSaving() && !hasSaved() && (isDirty() ? "Unsaved changes" : `Authenticated as ${identityLabel()} · Revision ${draft()!.revision}`)}
           {isSaving() && "Saving changes…"}
           {hasSaved() && !copyStatus() && "Saved"}
           {copyStatus()}
