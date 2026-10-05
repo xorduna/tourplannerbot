@@ -76,6 +76,7 @@ func run() error {
 	databaseReadiness := database.NewReadiness()
 	allowedUserAuthorizer := webapp.NewGORMAllowedUserAuthorizer()
 	draftReader := webapp.NewGORMDraftReader()
+	gmailDraftService := webapp.NewGmailDraftService(applicationConfig.TelegramGroupChatID)
 	dealTopicStore := database.NewTelegramDealTopicStore()
 	dealTopicService, err := webapp.NewDealTopicService(applicationConfig.TelegramGroupChatID, dealTopicStore)
 	if err != nil {
@@ -91,6 +92,7 @@ func run() error {
 	}
 	echoServer := webapp.NewServer(logger, databaseReadiness, buildInformation, sessionAuthenticator, draftReader)
 	webapp.RegisterDealTopicRoutes(echoServer, dealTopicService)
+	webapp.RegisterGmailDraftRoutes(echoServer, sessionAuthenticator, draftReader, gmailDraftService)
 	startHTTPServer(applicationContext, cancelApplicationContext, logger, applicationConfig.Port, echoServer)
 
 	toolRegistry := applicationTools.NewRegistry()
@@ -167,6 +169,7 @@ func run() error {
 			"status", "ready",
 		)
 		dealTopicService.SetBiginDealReader(biginClient)
+		gmailDraftService.SetBiginClient(biginClient)
 		if err := initializeAndRegisterTool(logger, toolRegistry, "add_bigin_deal_note", "bigin", func() (applicationTools.Tool, error) {
 			return bigin.NewAddDealNote(biginClient)
 		}); err != nil {
@@ -291,6 +294,7 @@ func run() error {
 		}); err != nil {
 			return fmt.Errorf("initialize or register create_gmail_draft tool: %w", err)
 		}
+		gmailDraftService.SetGmailClient(gmailClient)
 		if err := initializeAndRegisterTool(logger, toolRegistry, "download_gmail_attachments", "gmail", func() (applicationTools.Tool, error) {
 			return gmail.NewDownloadAttachments(gmailClient, gmail.DownloadAttachmentsConfig{TemporaryRoot: filesystemTool.Root()})
 		}); err != nil {
@@ -463,6 +467,7 @@ func run() error {
 	databaseReadiness.SetConnection(sqlDatabaseConnection)
 	allowedUserAuthorizer.SetDatabaseConnection(databaseConnection)
 	draftReader.SetDatabaseConnection(databaseConnection)
+	gmailDraftService.SetDatabaseConnection(databaseConnection)
 	dealTopicStore.SetDatabaseConnection(databaseConnection)
 	defer sqlDatabaseConnection.Close()
 	if err := initializeAndRegisterTool(logger, toolRegistry, "create_draft", "native", func() (applicationTools.Tool, error) {

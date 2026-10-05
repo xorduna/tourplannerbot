@@ -181,6 +181,91 @@ func TestCreateDraftRefreshesAfterUnauthorized(t *testing.T) {
 	}
 }
 
+func TestCreateReplyDraftUsesTrustedThreadAndRFCHeaders(t *testing.T) {
+	transport := roundTripFunction(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/token":
+			return jsonHTTPResponse(http.StatusOK, `{"access_token":"access-token","expires_in":3600}`), nil
+		case "/gmail/v1/users/me/messages/message-456":
+			if request.Method != http.MethodGet || request.URL.Query().Get("format") != "metadata" {
+				t.Errorf("reply target request = %s %s", request.Method, request.URL)
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"id":"message-456","threadId":"thread-789","payload":{"headers":[{"name":"Message-ID","value":"<original@example.com>"},{"name":"References","value":"<first@example.com>"},{"name":"From","value":"Client <client@example.com>"},{"name":"Subject","value":"Visita a Barcelona"}]}}`), nil
+		case "/gmail/v1/users/me/drafts":
+			requestBody := struct {
+				Message struct {
+					Raw      string `json:"raw"`
+					ThreadID string `json:"threadId"`
+				} `json:"message"`
+			}{}
+			if err := json.NewDecoder(request.Body).Decode(&requestBody); err != nil {
+				t.Fatalf("decode draft request: %v", err)
+			}
+			if requestBody.Message.ThreadID != "thread-789" {
+				t.Errorf("threadId = %q, want thread-789", requestBody.Message.ThreadID)
+			}
+			rawMessage, err := base64.RawURLEncoding.DecodeString(requestBody.Message.Raw)
+			if err != nil {
+				t.Fatalf("decode raw message: %v", err)
+			}
+			parsedMessage, err := mail.ReadMessage(strings.NewReader(string(rawMessage)))
+			if err != nil {
+				t.Fatalf("parse raw message: %v", err)
+			}
+			if parsedMessage.Header.Get("To") != `"Client" <client@example.com>` {
+				t.Errorf("To = %q", parsedMessage.Header.Get("To"))
+			}
+			if parsedMessage.Header.Get("Subject") != "Visita a Barcelona" {
+				t.Errorf("Subject = %q", parsedMessage.Header.Get("Subject"))
+			}
+			if parsedMessage.Header.Get("In-Reply-To") != "<original@example.com>" || parsedMessage.Header.Get("References") != "<first@example.com> <original@example.com>" {
+				t.Errorf("reply headers = In-Reply-To %q References %q", parsedMessage.Header.Get("In-Reply-To"), parsedMessage.Header.Get("References"))
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"id":"draft-123","message":{"id":"message-999","threadId":"thread-789"}}`), nil
+		default:
+			return jsonHTTPResponse(http.StatusNotFound, `{}`), nil
+		}
+	})
+	gmailClient := newTestClient(t, transport)
+	result, err := gmailClient.CreateReplyDraft(context.Background(), "message-456", "Hola, gràcies!")
+	if err != nil {
+		t.Fatalf("CreateReplyDraft: %v", err)
+	}
+	if result.DraftID != "draft-123" || result.ThreadID != "thread-789" {
+		t.Errorf("result = %#v", result)
+	}
+}
+
+func TestSearchContactMessagesReturnsOneMessagePerThread(t *testing.T) {
+	transport := roundTripFunction(func(request *http.Request) (*http.Response, error) {
+		switch request.URL.Path {
+		case "/token":
+			return jsonHTTPResponse(http.StatusOK, `{"access_token":"access-token","expires_in":3600}`), nil
+		case "/gmail/v1/users/me/messages":
+			if request.URL.Query().Get("q") != `from:"client@example.com" OR to:"client@example.com"` {
+				t.Errorf("query = %q", request.URL.Query().Get("q"))
+			}
+			return jsonHTTPResponse(http.StatusOK, `{"messages":[{"id":"message-1"},{"id":"message-2"},{"id":"message-3"}]}`), nil
+		case "/gmail/v1/users/me/messages/message-1":
+			return jsonHTTPResponse(http.StatusOK, `{"id":"message-1","threadId":"thread-1","snippet":"one","payload":{"headers":[{"name":"From","value":"client@example.com"},{"name":"Subject","value":"First"}]}}`), nil
+		case "/gmail/v1/users/me/messages/message-2":
+			return jsonHTTPResponse(http.StatusOK, `{"id":"message-2","threadId":"thread-1","snippet":"two","payload":{"headers":[{"name":"From","value":"client@example.com"},{"name":"Subject","value":"First"}]}}`), nil
+		case "/gmail/v1/users/me/messages/message-3":
+			return jsonHTTPResponse(http.StatusOK, `{"id":"message-3","threadId":"thread-2","snippet":"three","payload":{"headers":[{"name":"To","value":"client@example.com"},{"name":"Subject","value":"Second"}]}}`), nil
+		default:
+			return jsonHTTPResponse(http.StatusNotFound, `{}`), nil
+		}
+	})
+	gmailClient := newTestClient(t, transport)
+	messages, err := gmailClient.SearchContactMessages(context.Background(), "client@example.com")
+	if err != nil {
+		t.Fatalf("SearchContactMessages: %v", err)
+	}
+	if len(messages) != 2 || messages[0].MessageID != "message-1" || messages[1].MessageID != "message-3" {
+		t.Errorf("messages = %#v", messages)
+	}
+}
+
 // newTestClient creates a Gmail client whose traffic remains in memory.
 func newTestClient(t *testing.T, transport http.RoundTripper) *Client {
 	t.Helper()
