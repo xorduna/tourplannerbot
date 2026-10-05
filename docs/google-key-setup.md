@@ -1,3 +1,11 @@
+---
+title: Google Gmail OAuth Refresh Token Setup
+description: Manually generate and renew the Google OAuth refresh token used by the Gmail tools.
+methods: []
+depends_on: []
+used_by: []
+---
+
 # Generar un Google Gmail OAuth Refresh Token
 
 Aquest procediment serveix per obtenir manualment:

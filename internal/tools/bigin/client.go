@@ -87,6 +87,56 @@ func (client *Client) get(ctx context.Context, apiPath string) ([]byte, error) {
 	return client.do(ctx, http.MethodGet, apiPath, nil, "")
 }
 
+// getBinary performs one authenticated GET request for a binary resource such
+// as a record attachment and returns the raw response body. Unlike do, it does
+// not require a JSON payload and honours an explicit response size cap so a
+// large download cannot exhaust memory. An unauthorized response invalidates
+// the cached token and is retried once with a freshly refreshed one.
+func (client *Client) getBinary(ctx context.Context, apiPath string, responseLimit int64) ([]byte, error) {
+	if responseLimit <= 0 {
+		return nil, fmt.Errorf("Bigin download response limit must be positive")
+	}
+	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
+		accessToken, err := client.validAccessToken(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.apiURL+apiPath, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create Bigin request: %w", err)
+		}
+		request.Header.Set("Authorization", "Zoho-oauthtoken "+accessToken)
+
+		response, err := client.httpClient.Do(request)
+		if err != nil {
+			var requestURLError *url.Error
+			if errors.As(err, &requestURLError) {
+				err = requestURLError.Err
+			}
+			return nil, fmt.Errorf("call Bigin API: %w", err)
+		}
+		responseBody, readError := readLimitedResponseWithLimit(response.Body, responseLimit)
+		closeError := response.Body.Close()
+		if readError != nil {
+			return nil, fmt.Errorf("read Bigin API response: %w", readError)
+		}
+		if closeError != nil {
+			return nil, fmt.Errorf("close Bigin API response: %w", closeError)
+		}
+
+		if response.StatusCode == http.StatusUnauthorized && attemptNumber == 1 {
+			client.invalidateAccessToken(accessToken)
+			continue
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			return nil, apiResponseError("Bigin API", response.StatusCode, responseBody)
+		}
+		return responseBody, nil
+	}
+	return nil, fmt.Errorf("Bigin API authorization failed after refreshing the access token")
+}
+
 // postJSON performs one authenticated POST request with a JSON body.
 func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody any) ([]byte, error) {
 	encodedRequestBody, err := json.Marshal(requestBody)
@@ -270,13 +320,19 @@ func validateBaseURL(rawURL string, fieldName string) error {
 // readLimitedResponse prevents an upstream response from consuming unbounded
 // memory while allowing normal Bigin record payloads.
 func readLimitedResponse(responseBody io.Reader) ([]byte, error) {
-	limitedReader := io.LimitReader(responseBody, maximumResponseBytes+1)
+	return readLimitedResponseWithLimit(responseBody, maximumResponseBytes)
+}
+
+// readLimitedResponseWithLimit is readLimitedResponse with an explicit response
+// cap for larger resources such as binary record attachments.
+func readLimitedResponseWithLimit(responseBody io.Reader, maximumBytes int64) ([]byte, error) {
+	limitedReader := io.LimitReader(responseBody, maximumBytes+1)
 	responseBytes, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
 	}
-	if len(responseBytes) > maximumResponseBytes {
-		return nil, fmt.Errorf("response exceeded %d bytes", maximumResponseBytes)
+	if int64(len(responseBytes)) > maximumBytes {
+		return nil, fmt.Errorf("response exceeded %d bytes", maximumBytes)
 	}
 	return responseBytes, nil
 }
