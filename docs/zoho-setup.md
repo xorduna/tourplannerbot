@@ -36,8 +36,9 @@ enable `get_bigin_deal_emails`.
 
 The existing client ID and client secret do not need to change. A token with
 this scope also covers Bigin related-list reads, including the Emails related
-list for a pipeline record, and attachments uploaded with
-`upload_bigin_deal_attachment`.
+list for a pipeline record, attachments uploaded with
+`upload_bigin_deal_attachment`, and the attachment related list listed and
+downloaded by `download_bigin_deal_attachments`.
 
 ## Security notes
 

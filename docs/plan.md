@@ -366,6 +366,7 @@ Each one is a single task for Claude Code / Copilot.
 - ✅ Retrieve one Bigin deal by pipeline record ID with `get_bigin_deal`
 - ✅ Retrieve contacts by ID, general text, email, or phone with `search_bigin_contacts`
 - ✅ Add notes to pipeline records with `add_bigin_deal_note`
+- ✅ List and download deal attachments with `download_bigin_deal_attachments`
 - ✅ Create unsent Gmail drafts with `create_gmail_draft`
 - ✅ Replace unsent Gmail drafts with `update_gmail_draft`
 

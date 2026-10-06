@@ -88,6 +88,16 @@ used_by:
   - Makefile
 ```
 
+## google-key-setup.md
+
+```yaml
+title: Google Gmail OAuth Refresh Token Setup
+description: Manually generate and renew the Google OAuth refresh token used by the Gmail tools.
+methods: []
+depends_on: []
+used_by: []
+```
+
 ## llm.md
 
 ```yaml
@@ -182,9 +192,13 @@ methods:
   - currenttime.Tool.Execute: Returns the current time for an optional IANA timezone.
   - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
+  - bigin.GetDealEmailsTool.Execute: Retrieves the email related-list data for a deal.
+  - bigin.UploadDealAttachmentTool.Execute: Uploads a queued temporary file as an attachment on a Bigin deal.
+  - bigin.DownloadDealAttachmentsTool.Execute: Lists a Bigin deal's attachments or downloads one and queues it for Telegram delivery.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
+  - filesystem.Tool.Execute: Renames a file queued for Telegram delivery in the active conversation.
   - monei.CreatePaymentLinkTool.Execute: Creates a MONEI payment link from neutral payment inputs.
   - monei.GetPaymentTool.Execute: Retrieves one MONEI payment by ID.
   - brave.WebSearchTool.Execute: Searches the public web through Brave Search and returns compacted results.
@@ -209,9 +223,12 @@ depends_on:
   - internal/tools/randomnumber/random_number.go
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
+  - internal/tools/bigin/get_deal_emails.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/bigin/update_deal.go
+  - internal/tools/bigin/upload_deal_attachment.go
+  - internal/tools/filesystem/filesystem.go
   - internal/tools/monei/client.go
   - internal/tools/monei/payment.go
   - internal/tools/brave/client.go
@@ -234,4 +251,11 @@ depends_on:
 used_by:
   - cmd/bot/main.go
   - internal/llm/client.go
+```
+
+## zoho-setup.md
+
+```yaml
+title: Zoho Bigin OAuth Setup
+description: Generate and renew the OAuth refresh token used by Bigin tools.
 ```

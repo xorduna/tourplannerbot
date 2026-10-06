@@ -13,6 +13,7 @@ methods:
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.GetDealEmailsTool.Execute: Retrieves the email related-list data for a deal.
   - bigin.UploadDealAttachmentTool.Execute: Uploads a queued temporary file as an attachment on a Bigin deal.
+  - bigin.DownloadDealAttachmentsTool.Execute: Lists a Bigin deal's attachments or downloads one and queues it for Telegram delivery.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
   - bigin.UpdateDealTool.Execute: Updates selected Bigin fields and deep-merges formatted JSON metadata paths.
@@ -140,6 +141,17 @@ as `multipart/form-data`. The filename must exactly match a file returned by
 provided by the model. The tool accepts regular files in the bot's dedicated
 `./tmp` workspace only, rejects `.exe` files, and enforces Bigin's 20 MB
 per-file limit.
+
+`download_bigin_deal_attachments(deal_id, attachment_id)` lists or downloads the
+files attached to a deal. When `attachment_id` is `null` it returns the
+attachment related list at `GET /bigin/v2/Pipelines/{record_id}/Attachments` as
+sanitized metadata (`id`, `file_name`, `size`). Providing an attachment ID from
+that list downloads that single file through
+`GET /bigin/v2/Pipelines/{record_id}/Attachments/{attachment_id}` and queues it
+for delivery to the current Telegram conversation. The filename comes from
+Bigin and is sanitized; paths cannot be provided by the model. The temporary
+copy lives in the bot's dedicated `./tmp` workspace only until delivery, and the
+tool enforces a 45 MB per-file limit.
 
 `search_bigin_contacts(search_by, query)` retrieves contacts with the complete
 standard and custom field envelope returned by Bigin. `search_by=id` performs a
