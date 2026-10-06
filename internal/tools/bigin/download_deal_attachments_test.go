@@ -34,6 +34,9 @@ func TestDownloadDealAttachmentsListsAttachments(t *testing.T) {
 			if request.Method != http.MethodGet {
 				t.Errorf("method = %s, want GET", request.Method)
 			}
+			if fields := request.URL.Query().Get("fields"); fields != "File_Name,Size" {
+				t.Errorf("fields = %q, want File_Name,Size", fields)
+			}
 			return jsonHTTPResponse(http.StatusOK, `{"data":[{"id":"777","File_Name":"contracte.pdf","$size":"11"},{"id":"888","File_Name":"../evil.pdf","Size":22}]}`), nil
 		default:
 			return jsonHTTPResponse(http.StatusNotFound, `{}`), nil

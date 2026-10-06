@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	downloadDealAttachmentsToolName              = "download_bigin_deal_attachments"
-	maximumBiginDownloadBytes              int64 = 45_000_000
-	maximumBiginDownloadFilenameRunes            = 180
-	maximumBiginAttachmentIDLength               = 64
-	defaultBiginDownloadFilenameMIMEType         = "application/octet-stream"
+	downloadDealAttachmentsToolName            = "download_bigin_deal_attachments"
+	maximumBiginDownloadBytes            int64 = 45_000_000
+	maximumBiginDownloadFilenameRunes          = 180
+	maximumBiginAttachmentIDLength             = 64
+	defaultBiginDownloadFilenameMIMEType       = "application/octet-stream"
 )
 
 // DownloadDealAttachmentsTool lists the attachments related to one Bigin
@@ -134,7 +134,10 @@ func (downloadDealAttachmentsTool *DownloadDealAttachmentsTool) Execute(ctx cont
 // listAttachments retrieves the deal's attachment related list and returns its
 // sanitized metadata.
 func (downloadDealAttachmentsTool *DownloadDealAttachmentsTool) listAttachments(ctx context.Context, dealID string) ([]biginAttachmentMetadata, error) {
-	responseBody, err := downloadDealAttachmentsTool.client.get(ctx, "/bigin/v2/Pipelines/"+dealID+"/Attachments")
+	// Bigin v2 requires fields on attachment-list requests. The attachment ID
+	// is included in every response, so request only the metadata we expose and
+	// need to enforce the download-size limit.
+	responseBody, err := downloadDealAttachmentsTool.client.get(ctx, "/bigin/v2/Pipelines/"+dealID+"/Attachments?fields=File_Name,Size")
 	if err != nil {
 		return nil, fmt.Errorf("list Bigin deal attachments: %w", err)
 	}
