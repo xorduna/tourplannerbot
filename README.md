@@ -13,10 +13,10 @@ Telegram bot for Diana, a licensed Barcelona tour guide. Internal tool to plan t
 - Persisted tool calls and results
 - `current_time` tool with a configurable default IANA timezone
 - Cryptographically secure `random_number` tool for integer and floating-point ranges
-- Bigin deal lookup, contact search, deal-note creation, and selective deal updates with safe metadata merging, with automatic Zoho OAuth token refresh
+- Bigin deal lookup, contact search, attachment analysis, deal-note creation, and selective deal updates with safe metadata merging, with automatic Zoho OAuth token refresh
 - MONEI payment-link creation and current payment-status lookup
 - On-demand Bigin deal association with Telegram forum topics through `GET /deals/{deal_id}/topic`
-- Gmail message search, attachment delivery to Telegram, temporary PDF analysis by the active model, plus draft creation and full-message updates with automatic Google OAuth token refresh
+- Gmail message search, attachment delivery to Telegram, temporary document analysis by the active model, plus draft creation and full-message updates with automatic Google OAuth token refresh
 - `web_search` tool backed by the Brave Search API for current, real-world information
 - `read_url` tool backed by the Jina AI Reader API for reading a full page, including JavaScript-rendered sites
 - Structured Diana Barcelona tour, FAQ, and terms lookup from a private DigitalOcean Spaces knowledge base, including 1–9-person price estimates

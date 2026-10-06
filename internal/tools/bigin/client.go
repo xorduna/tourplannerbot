@@ -87,6 +87,73 @@ func (client *Client) get(ctx context.Context, apiPath string) ([]byte, error) {
 	return client.do(ctx, http.MethodGet, apiPath, nil, "")
 }
 
+// download writes one authenticated Bigin binary response to destination. It
+// retries once after an unauthorized response, just like JSON API requests,
+// and bounds the copied bytes so attachment downloads cannot exhaust disk.
+func (client *Client) download(ctx context.Context, apiPath string, destination io.Writer, maximumBytes int64) (string, int64, error) {
+	if destination == nil {
+		return "", 0, fmt.Errorf("Bigin download destination is required")
+	}
+	if maximumBytes <= 0 {
+		return "", 0, fmt.Errorf("Bigin download maximum bytes must be positive")
+	}
+
+	for attemptNumber := 1; attemptNumber <= 2; attemptNumber++ {
+		accessToken, err := client.validAccessToken(ctx)
+		if err != nil {
+			return "", 0, err
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.apiURL+apiPath, nil)
+		if err != nil {
+			return "", 0, fmt.Errorf("create Bigin attachment download request: %w", err)
+		}
+		request.Header.Set("Authorization", "Zoho-oauthtoken "+accessToken)
+		request.Header.Set("Accept", "*/*")
+
+		response, err := client.httpClient.Do(request)
+		if err != nil {
+			var requestURLError *url.Error
+			if errors.As(err, &requestURLError) {
+				err = requestURLError.Err
+			}
+			return "", 0, fmt.Errorf("download Bigin attachment: %w", err)
+		}
+		if response.StatusCode == http.StatusUnauthorized && attemptNumber == 1 {
+			_ = response.Body.Close()
+			client.invalidateAccessToken(accessToken)
+			continue
+		}
+		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+			responseBody, readError := readLimitedResponse(response.Body)
+			closeError := response.Body.Close()
+			if readError != nil {
+				return "", 0, fmt.Errorf("read Bigin attachment download error response: %w", readError)
+			}
+			if closeError != nil {
+				return "", 0, fmt.Errorf("close Bigin attachment download response: %w", closeError)
+			}
+			return "", 0, apiResponseError("Bigin API", response.StatusCode, responseBody)
+		}
+		if response.ContentLength > maximumBytes {
+			_ = response.Body.Close()
+			return "", 0, fmt.Errorf("Bigin attachment exceeds the %d MB limit", maximumBytes>>20)
+		}
+		copiedBytes, copyError := io.Copy(destination, io.LimitReader(response.Body, maximumBytes+1))
+		closeError := response.Body.Close()
+		if copyError != nil {
+			return "", 0, fmt.Errorf("write Bigin attachment: %w", copyError)
+		}
+		if closeError != nil {
+			return "", 0, fmt.Errorf("close Bigin attachment download response: %w", closeError)
+		}
+		if copiedBytes > maximumBytes {
+			return "", 0, fmt.Errorf("Bigin attachment exceeds the %d MB limit", maximumBytes>>20)
+		}
+		return response.Header.Get("Content-Type"), copiedBytes, nil
+	}
+	return "", 0, fmt.Errorf("Bigin attachment download authorization failed after refreshing the access token")
+}
+
 // postJSON performs one authenticated POST request with a JSON body.
 func (client *Client) postJSON(ctx context.Context, apiPath string, requestBody any) ([]byte, error) {
 	encodedRequestBody, err := json.Marshal(requestBody)

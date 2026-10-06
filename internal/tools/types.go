@@ -49,6 +49,10 @@ type DownloadedFile struct {
 	MIMEType    string
 	Size        int64
 	CleanupPath string
+	// AnalysisOnly keeps a downloaded source file available to the active model
+	// response without sending it to Telegram. The default false preserves
+	// delivery behavior for tools whose explicit purpose is file delivery.
+	AnalysisOnly bool
 }
 
 // SetActiveDraft makes the current authorized draft available to native tools

@@ -12,6 +12,7 @@ methods:
   - randomnumber.Tool.Execute: Generates secure integer or floating-point random values in a range.
   - bigin.GetDealTool.Execute: Retrieves one Bigin pipeline record by its numeric record ID.
   - bigin.GetDealEmailsTool.Execute: Retrieves the email related-list data for a deal.
+  - bigin.DownloadDealAttachmentTool.Execute: Lists or temporarily downloads one Bigin deal attachment for analysis.
   - bigin.UploadDealAttachmentTool.Execute: Uploads a queued temporary file as an attachment on a Bigin deal.
   - bigin.SearchContactsTool.Execute: Retrieves Bigin contacts by ID, general text, email, or phone.
   - bigin.AddDealNoteTool.Execute: Adds a note to one Bigin pipeline record.
@@ -26,7 +27,7 @@ methods:
   - knowledgebase.GetTourTool.Execute: Retrieves one tour and calculates its booking estimate for 1–9 people.
   - knowledgebase.ReadPageTool.Execute: Reads one listed knowledge-base Markdown page.
   - gmail.CreateDraftTool.Execute: Creates an unsent plain-text Gmail draft.
-  - gmail.DownloadAttachmentsTool.Execute: Downloads Gmail attachments, queues them for Telegram delivery, and makes bounded PDFs available to the active model response.
+  - gmail.DownloadAttachmentsTool.Execute: Downloads Gmail attachments, queues them for Telegram delivery, and makes bounded supported files available to the active model response.
   - gmail.SearchMessagesTool.Execute: Searches Gmail messages by sender, recipient, subject, or message text.
   - gmail.UpdateDraftTool.Execute: Replaces the complete message in an existing Gmail draft.
   - draft.Tool.Execute: Creates a collaborative draft from model content and trusted execution context.
@@ -42,6 +43,7 @@ depends_on:
   - internal/tools/bigin/client.go
   - internal/tools/bigin/get_deal.go
   - internal/tools/bigin/get_deal_emails.go
+  - internal/tools/bigin/download_deal_attachment.go
   - internal/tools/bigin/search_contacts.go
   - internal/tools/bigin/add_deal_note.go
   - internal/tools/bigin/update_deal.go
@@ -132,6 +134,18 @@ list at `GET /bigin/v2/Pipelines/{record_id}/Emails` when `message_id` is
 `null`. Providing a message ID from that list retrieves the individual email,
 including its `content` body, through the corresponding detail endpoint. It is
 read-only and returns Bigin's unchanged response.
+
+`download_bigin_deal_attachment(deal_id, attachment_id)` lists the attachment
+related list through `GET /bigin/v2/Pipelines/{record_id}/Attachments` when
+`attachment_id` is `null`. With an attachment ID from that list it verifies
+that the attachment belongs to the deal, downloads it from
+`GET /bigin/v2/Pipelines/{record_id}/Attachments/{attachment_id}`, and stores
+it only in a private temporary directory. Supported PDFs, text files, rich
+documents, presentations, and spreadsheets are provided to the next model
+request as untrusted source material so they can be analysed; the file and
+directory are deleted once the response ends. Downloads are not sent to
+Telegram by default. `send_to_telegram` can be set to `true` only when the user
+explicitly asks to receive the file. Each download is limited to 20 MB.
 
 `upload_bigin_deal_attachment(deal_id, filename)` uploads one file already
 queued earlier in the same response to `POST /bigin/v2/Pipelines/{record_id}/Attachments`
@@ -331,7 +345,8 @@ Telegram chat and forum topic that requested the tool. It must only be used
 when the user explicitly asks to retrieve or send an attachment. The tool
 downloads at most five files, with a 45 MB per-file and 100 MB combined limit;
 oversized or excess files are returned as skipped. Downloaded bytes are written
-to a fresh private directory beneath the bot's `./tmp` workspace. PDFs that fit a
+to a fresh private directory beneath the bot's `./tmp` workspace. Supported
+PDFs, text files, rich documents, presentations, and spreadsheets that fit a
 separate 45 MB combined model-input budget are also provided to the next
 Responses request as temporary `input_file` data URLs so the active model can
 read them; their contents are explicitly untrusted source material, not

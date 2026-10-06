@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"context"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 // incoming update; model arguments cannot redirect a file to another chat.
 func (telegramHandler *Handler) sendDownloadedFiles(ctx context.Context, telegramBot *bot.Bot, chatID int64, messageThreadID int, downloadedFiles []applicationTools.DownloadedFile) {
 	for _, downloadedFile := range downloadedFiles {
+		if downloadedFile.AnalysisOnly {
+			continue
+		}
 		if strings.TrimSpace(downloadedFile.Path) == "" || strings.TrimSpace(downloadedFile.Filename) == "" {
 			telegramHandler.logger.Warn("skipping invalid downloaded file", "chat_id", chatID, "message_thread_id", messageThreadID)
 			continue
@@ -47,12 +51,12 @@ func (telegramHandler *Handler) sendDownloadedFiles(ctx context.Context, telegra
 }
 
 // cleanupDownloadedFiles removes each per-tool temporary directory once the
-// send attempt has completed, including error paths. No downloaded mail data is
-// retained on the bot's disk after its response.
+// send attempt has completed, including error paths. No downloaded attachment
+// data is retained on the bot's disk after its response.
 func cleanupDownloadedFiles(downloadedFiles []applicationTools.DownloadedFile) {
 	cleanupPaths := make(map[string]struct{})
 	for _, downloadedFile := range downloadedFiles {
-		if isManagedGmailTemporaryDirectory(downloadedFile.CleanupPath) {
+		if isManagedAttachmentTemporaryDirectory(downloadedFile.CleanupPath) {
 			cleanupPaths[downloadedFile.CleanupPath] = struct{}{}
 		}
 	}
@@ -61,30 +65,59 @@ func cleanupDownloadedFiles(downloadedFiles []applicationTools.DownloadedFile) {
 	}
 }
 
-// isManagedGmailTemporaryDirectory makes cleanup deliberately narrow: it can
-// remove only a direct child of the dedicated tmp workspace whose name was
-// created by DownloadAttachmentsTool.
-func isManagedGmailTemporaryDirectory(rawPath string) bool {
+// isManagedAttachmentTemporaryDirectory makes cleanup deliberately narrow: it
+// can remove only a direct child of the dedicated tmp workspace created by a
+// trusted Gmail or Bigin attachment tool.
+func isManagedAttachmentTemporaryDirectory(rawPath string) bool {
 	cleanedPath := filepath.Clean(strings.TrimSpace(rawPath))
-	return strings.HasPrefix(filepath.Base(cleanedPath), "tourplannerbot-gmail-attachments-") && filepath.Base(filepath.Dir(cleanedPath)) == "tmp"
+	temporaryDirectoryName := filepath.Base(cleanedPath)
+	return (strings.HasPrefix(temporaryDirectoryName, "tourplannerbot-gmail-attachments-") || strings.HasPrefix(temporaryDirectoryName, "tourplannerbot-bigin-attachments-")) && filepath.Base(filepath.Dir(cleanedPath)) == "tmp"
 }
 
-// modelPDFInputs selects PDF attachments that fit in one OpenAI file-input
-// request. The source file remains on disk only until the response finishes.
-func modelPDFInputs(downloadedFiles []applicationTools.DownloadedFile) []llm.FileInput {
+// modelFileInputs selects supported document attachments that fit in one
+// OpenAI file-input request. The source file remains on disk only until the
+// response finishes. File types follow the Responses API input_file support.
+func modelFileInputs(downloadedFiles []applicationTools.DownloadedFile) []llm.FileInput {
 	fileInputs := make([]llm.FileInput, 0, len(downloadedFiles))
 	var totalBytes int64
 	for _, downloadedFile := range downloadedFiles {
-		isPDF := strings.EqualFold(strings.TrimSpace(downloadedFile.MIMEType), "application/pdf") || strings.EqualFold(filepath.Ext(downloadedFile.Filename), ".pdf")
-		if !isPDF || downloadedFile.Size <= 0 || downloadedFile.Size > llm.MaximumInputFileBytes || totalBytes+downloadedFile.Size > llm.MaximumInputFilesBytes {
+		if !isSupportedModelFile(downloadedFile) || downloadedFile.Size <= 0 || downloadedFile.Size > llm.MaximumInputFileBytes || totalBytes+downloadedFile.Size > llm.MaximumInputFilesBytes {
 			continue
 		}
 		fileInputs = append(fileInputs, llm.FileInput{
 			Path:     downloadedFile.Path,
 			Filename: downloadedFile.Filename,
-			MIMEType: "application/pdf",
+			MIMEType: modelFileMIMEType(downloadedFile),
 		})
 		totalBytes += downloadedFile.Size
 	}
 	return fileInputs
+}
+
+// modelFileMIMEType preserves the trusted source MIME type and infers one from
+// the filename only when the source did not identify a useful content type.
+func modelFileMIMEType(downloadedFile applicationTools.DownloadedFile) string {
+	mimeType := strings.TrimSpace(downloadedFile.MIMEType)
+	if mimeType != "" && !strings.EqualFold(mimeType, "application/octet-stream") {
+		return mimeType
+	}
+	if inferredMIMEType := mime.TypeByExtension(strings.ToLower(filepath.Ext(downloadedFile.Filename))); inferredMIMEType != "" {
+		parsedMIMEType, _, _ := mime.ParseMediaType(inferredMIMEType)
+		return parsedMIMEType
+	}
+	return "application/octet-stream"
+}
+
+// isSupportedModelFile allows the document, text, presentation, and
+// spreadsheet formats accepted by the Responses API as input_file data.
+func isSupportedModelFile(downloadedFile applicationTools.DownloadedFile) bool {
+	if strings.EqualFold(strings.TrimSpace(downloadedFile.MIMEType), "application/pdf") {
+		return true
+	}
+	switch strings.ToLower(filepath.Ext(downloadedFile.Filename)) {
+	case ".pdf", ".txt", ".md", ".json", ".html", ".htm", ".xml", ".doc", ".docx", ".rtf", ".odt", ".ppt", ".pptx", ".csv", ".tsv", ".iif", ".xls", ".xlsx":
+		return true
+	default:
+		return false
+	}
 }

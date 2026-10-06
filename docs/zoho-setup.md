@@ -1,6 +1,12 @@
 ---
 title: Zoho Bigin OAuth Setup
 description: Generate and renew the OAuth refresh token used by Bigin tools.
+methods: []
+depends_on:
+  - internal/tools/bigin/client.go
+used_by:
+  - README.md
+  - docs/tools.md
 ---
 
 # Zoho Bigin OAuth setup
@@ -36,7 +42,8 @@ enable `get_bigin_deal_emails`.
 
 The existing client ID and client secret do not need to change. A token with
 this scope also covers Bigin related-list reads, including the Emails related
-list for a pipeline record, and attachments uploaded with
+list for a pipeline record, attachments read with
+`download_bigin_deal_attachment`, and attachments uploaded with
 `upload_bigin_deal_attachment`.
 
 ## Security notes
